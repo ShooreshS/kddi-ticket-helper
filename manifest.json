@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "KDDI Ticket Helper",
+  "version": "0.1",
+  "description": "A Chrome extension to manage support tickets and automate form filling.",
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "storage",
+    "clipboardRead"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.atlassian.net/*",
+        "*://*.service-now.com/*"
+      ],
+      "js": ["src/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "public/icons/SSitsm.png",
+      "48": "public/icons/SSitsm.png",
+      "64": "public/icons/SSitsm.png",
+      "128": "public/icons/SSitsm.png"
+    }
+  }
+}

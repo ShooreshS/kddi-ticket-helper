@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Support Ticket Manager</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div id="popup-container">
+        <!-- Title Row -->
+        <div class="title-row">
+            <div class="left-section">
+                <a href="https://shooreshs.github.io/messy-xml-viewer/privacy-policy.html">
+                <img src="../icons/icon64.png" alt="Icon" class="icon" />
+                </a>
+                <h1 class="title">ITSM Helper</h1>
+            </div>
+            <img
+                id="warning-icon"
+                src="../icons/warning-icon.webp"
+                class="warning-icon"
+            />
+            <h5 id="jira-id" class="jira-id">Jira ID: <span id="jira-id-value">-</span></h5>
+        </div>
+
+        <!-- Items -->
+        <div class="item-list">
+            <div class="dropdown">
+                <label for="item1">Country</label>
+                <select id="item1" name="item1">
+                <option value="opt1a">USA</option>
+                <option value="opt1b">Canada</option>
+                </select>
+            </div>
+
+            <div class="dropdown">
+                <label for="item2">Network</label>
+                <select id="item2" name="item2">
+                <option value="opt2a">VZW</option>
+                <option value="opt2b">Telus</option>
+                <option value="opt2b">LOLO</option>
+                <option value="opt2b">SEGRA</option>
+                </select>
+            </div>
+
+            <div class="dropdown">
+                <label for="type_of_service">Service</label>
+                <select id="type_of_service" name="type_of_service">
+                <option value="opt3a">PROV/IT/SMDP+</option>
+                <option value="opt3b">DATA</option>
+                <option value="opt3c">SMS</option>
+                <option value="opt3d">VOICE / VOLTE</option>
+                <option value="opt3e">IP/APN/DNS/LEASEDLINE/Routing/PGW</option>
+                <option value="opt3f">SIM ORDER</option>
+                <option value="opt3g">FRAUD</option>
+                <option value="opt3g">OTHER</option>
+                </select>
+            </div>
+        </div>
+
+        <hr />
+
+        <div id="buttons-container" class="button-row">
+        <button id="selector">Select</button>
+        <button id="read-data">Change Tasks</button>
+        <button id="paste-data">Fill</button>
+        </div>
+        <div id="status-message"></div>
+    </div>
+    <script src="popup.js" type="module" ></script>
+</body>
+</html>
