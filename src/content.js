@@ -1,6 +1,7 @@
 
 
-console.log('✅ Content script loaded into:', window.location.href);
+
+console.log('Content script loaded into:', window.location.href);
 
 async function extractJiraTicketData() {
   console.log('🔍 Extracting Jira ticket data...');
@@ -80,9 +81,33 @@ async function extractJiraTicketData() {
 // Picker
 let hoverBox = null;
 let lastTarget = null;
+const IS_TOP = window === window.top;
+
+// DEBUG ONLY
+let example_gpt_incident_response = {
+  "ticketSummary": "Datapacket Planned emergency maintenance in Los Angeles on Jun 30, 2025",
+  "shortSummary": "[CD][KDDI][Country][Network][Service][SP:xx] Short Description of the Issue###Outage/NoOutage###",
+  "ticketDetails": {
+    "requestType": "Lolo - Incident",
+    "ticketType": "Change Request",
+    "priority": "Non Service Affecting",
+    "country": "USA",
+    "network": "LOLO",
+    "service": "DATA",
+    "spRef": "SP-336",
+    "description": "Impact: Up to 5 minutes of network service outage per server, with a maximum duration of up to 5 minutes...",
+    "plannedStart": "Jun 30, 2025, 2:00 PM",
+    "plannedEnd": "Jun 30, 2025, 5:00 PM",
+    "riskLevel": "Medium",
+    "testPlan": "Check service functionality before, during and after the change",
+    "backupPlan": "Rollback",
+    "additionalNotes": "Please keep us updated once this Change Request is finished."
+  }
+}
 
 function startPickerMode() {
   // Create a highlight box overlay
+  document.body.style.cursor = 'crosshair';
   hoverBox = document.createElement('div');
   Object.assign(hoverBox.style, {
     position: 'absolute',
@@ -115,12 +140,13 @@ function onMouseMove(e) {
   });
 }
 
-function onClick(e) {
+async function onClick(e) {
+  document.body.style.cursor = 'default';
   e.preventDefault();
   e.stopPropagation();
 
   const selected = e.target;
-  const data = selected.innerText || selected.textContent || '';
+  var data = selected.innerText || selected.textContent || '';
 
   console.log("🟢 Selected element data:", data);
 
@@ -131,146 +157,327 @@ function onClick(e) {
   hoverBox = null;
   lastTarget = null;
 
-  chrome.runtime.sendMessage({ action: 'extractedData', data });
+  chrome.runtime.sendMessage({ action: 'saveTicketData', data });
+
+
+}
+
+function queryDeep(selector, { root = document, timeout = 4000, every = 150 } = {}) {
+  const search = (r) => {
+    // Try at this root first
+    const hit = r.querySelector?.(selector);
+    if (hit) return hit;
+
+    // Walk all elements; enter any shadowRoots
+    const all = r.querySelectorAll?.('*') || [];
+    for (const el of all) {
+      if (el.shadowRoot) {
+        const inside = search(el.shadowRoot);
+        if (inside) return inside;
+      }
+    }
+    return null;
+  };
+
+  if (!timeout) return search(root);
+
+  // Optional: poll for late-rendered header
+  const start = Date.now();
+  return new Promise((resolve, reject) => {
+    const tick = () => {
+      const found = search(root);
+      if (found) return resolve(found);
+      if (Date.now() - start >= timeout) return reject(new Error('not found (deep)'));
+      setTimeout(tick, every);
+    };
+    tick();
+  });
+}
+
+function getTopLevelElement(selector, func = 'getAttribute', attribute = 'aria-label') {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      { action: 'getElement', selector, func, attribute },
+      (resp) => {
+        console.log('[content] getTopLevelElement response:', resp);
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError.message);
+        } else if (resp && resp.ok) {
+          resolve(resp.value);
+        } else {
+          reject(resp?.error || 'Element not found');
+        }
+      }
+    );
+  });
+}
+
+function setTopLevelElement(selector, value) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      { action: 'setElement', selector, value },
+      (resp) => {
+        console.log('[content] setTopLevelElement response:', resp);
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError.message);
+        } else if (resp && resp.ok) {
+          resolve(true);
+        } else {
+          reject(resp?.error || 'Element not found');
+        }
+      }
+    );
+  });
+}
+
+async function fillInData(data) {
+  console.log('[fillInData] Filling in data:\n', data);
+  let tempData = example_gpt_incident_response;
+  console.log('[DEBUG] Filling in data:', tempData);
+
+  var ticketType = "";
+  if (tempData.ticketDetails.requestType.includes('Change')) {
+    ticketType = 'change_request';
+  } else {
+    ticketType = 'incident';
+  }
+  console.log('Ticket type:', ticketType);
+
+  try {
+    let caller = await getTopLevelElement('.header-avatar-button.contextual-zone-button.user-menu', 'getAttribute', 'aria-label');
+    // FORM elements
+    let shortDescriptionEl = document.querySelector(`#${ticketType}\\.short_description`);
+      // document.getElementById(`sys_readonly.${ticketType}.short_description`);
+    let descriptionEl = document.querySelector(`#${ticketType}\\.description`);
+    //  document.getElementById(`sys_readonly.${ticketType}.description`);
+    let serviceEl = document.querySelector(`#sys_display\\.${ticketType}\\.business_service`);
+    let serviceOfferingEl = document.querySelector(`#sys_display\\.${ticketType}\\.service_offering`);
+    let configItemEl = document.getElementById(`${ticketType}.cmdb_ci_label`);
+
+    let callerEl = document.getElementById(`sys_display.${ticketType}.caller_id`);
+    let orginatorGroupEl = document.getElementById(`sys_display.${ticketType}.u_originator_group`);
+
+    // FILL IN THE FORM
+    callerEl.value = caller;
+    orginatorGroupEl.value = 'FT_cdmno25kddi';
+    serviceEl.value = 'Mobile Network, Connected Car';
+    serviceOfferingEl.value = tempData.ticketDetails.country == 'USA' ? 'cdmno25kddi#us' : 'cdmno25kddi#ca';
+
+    shortDescriptionEl.value = tempData.shortSummary.replace('Country', tempData.ticketDetails.country).replace('Network', tempData.ticketDetails.network).replace('Service', tempData.ticketDetails.service).replace('SP:xx', tempData.ticketDetails.spRef) || '';
+    descriptionEl.value = tempData.ticketSummary || '';
+
+  } catch (error) {
+    console.error('Error filling in data:', error);
+  }
+
+
 }
 
 // Listener from popup
-chrome.runtime.onMessage.addListener(async function(request, sender, sendResponse) {
-    console.log('[content] Received message:', request);
-    if(window.location.hostname.includes(".atlassian.net") || window.location.hostname.includes(".service-now.com")) {
+// Top level
+if (IS_TOP) {
+  chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
+    console.log('[content] TOP Received message:', request);
+
+    if (request.action === 'startPickerMode') {
+      startPickerMode();
+      sendResponse({ status: 'picker_started' });
+    }
+
+    else if (request.action === "extractTicketData") {
+      console.log('[content] Extracting ticket data from the page...');
+      async () => {
+        const data = await extractJiraTicketData();
+        sendResponse(data);
+      }
+    }
+
+    else if (request.action === 'getElement') {
+      console.log('[content][TOP] Getting element:', request.selector);
+      (async () => {
+        let element = await queryDeep(request.selector);
+
+        if (element) {
+          let response = null;
+          switch (request.func) {
+            case 'getProperty':
+              response = element[request.property];
+              break;
+            case 'getAttribute':
+              response = element.getAttribute(request.attribute).split(':')[0];
+              break;
+            case 'getValue':
+              response = element.value;
+              break;
+            default:
+              console.warn('Unknown function:', request.func);
+              response = "unknown function";
+          }
+
+          console.log('[content][TOP] value:', response);
+          sendResponse({ ok: true, selector: request.selector, value: response });
+        } else {
+          sendResponse({ ok: false, selector: request.selector, value: "not found" });
+        }
+      })();
+    }
+
+    else if (request.action === 'setElement') {
+      console.log('[content][TOP] Setting element:', request.selector, request.value);
+      (async () => {
+        let element = await queryDeep(request.selector);
+        if (element) {
+          element.value = request.value;
+          sendResponse({ ok: true, selector: request.selector, value: request.value });
+        } else {
+          sendResponse({ ok: false, selector: request.selector, value: "not found" });
+        }
+      })();
+    }
     
-      if (request.action === 'startPickerMode') {
-          startPickerMode();
-      }
+    else {
+      console.warn('[content] Unknown action:', request.action);
+      sendResponse({ status: 'error', message: 'Unknown action' });
+    }
+    return true; // keep channel open (good habit for async)
+  });
+}
 
-      if (request.action === "extractTicketData") {
-          console.log('[content] Extracting ticket data from the page...');
-          const data = await extractJiraTicketData();
-          sendResponse(data);
-      }
+// in iframes
+if (!IS_TOP) {
+  console.log('[content][iframe] addListener(s)');
+  chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
+    console.log('[iframe] Received message:', request);
 
-      if (request.action === 'fillForm') {
-          const ticketData = request.data;
+    if (request.action === 'pasteTicketData') {
+      chrome.storage.local.get('ticketData', async function (result) {
+        console.log('[iframe] Retrieved ticket data from storage:', result);
+        if (result.ticketData) {
+          console.log('[iframe] Retrieved ticket data:', result.ticketData);
+          // const formattedData = await formatData(ticketData);
+          // console.log('Formatted data:', formattedData);
+          fillInData(result.ticketData);
+          sendResponse({ status: 'success', message: 'Data pasted successfully' });
+        } else {
+          console.error('No ticket data found in storage.');
+          sendResponse({ status: 'error', message: 'No ticket data found in storage' });
+        }
+      });
+    }
 
-          // Assuming the form has specific fields to fill
-          document.querySelector('#ticketTitle').value = ticketData.title;
-          document.querySelector('#ticketDescription').value = ticketData.description;
-          document.querySelector('#ticketType').value = ticketData.type;
-
-          // Create subtasks based on the predefined table
-          const subtasks = getSubtasks(ticketData.type);
-          const subtaskContainer = document.querySelector('#subtaskContainer');
-          subtaskContainer.innerHTML = ''; // Clear existing subtasks
-
-          subtasks.forEach(subtask => {
-              const subtaskElement = document.createElement('div');
-              subtaskElement.textContent = subtask;
-              subtaskContainer.appendChild(subtaskElement);
-          });
-      }
-
-    } else {
-        console.warn('[content] Not a Jira page, ignoring message');
-        return;    
-    }      
-});
+    return true; // keep channel open for async response
+  });
+}
 
 function getSubtasks(ticketType) {
-    // This function should retrieve subtasks based on the ticket type
-    // For now, returning a placeholder array
-    return ['Subtask 1 for ' + ticketType, 'Subtask 2 for ' + ticketType];
+  // This function should retrieve subtasks based on the ticket type
+  // For now, returning a placeholder array
+  return ['Subtask 1 for ' + ticketType, 'Subtask 2 for ' + ticketType];
 }
 
 
-example_extracted_data_by_extractJiraTicketData = {
-    "ADP Connectivity issue": "Hayam Ahmed",
-    "Actions": "Customer\nCustomer details\nSilvia-Ioana Gonciulea",
-    "Activity": "Show:\nAll\nComments\nHistory\nWork log\nApprovals\nSummarize 4 comments\nNewest first",
-    "All queues": "Give feedback",
-    "Apps": "Create",
-    "Assets": "Apps",
-    "Assign to me": "Reporter\nSilvia-Ioana Gonciulea",
-    "Assignee": "Status",
-    "BMW ADP Redundancy tests - UP/AAA": "Silvia-Ioana Gonciulea",
-    "Back": "SP-336",
-    "Backout plan": "rollback",
-    "Bringing down Amsterdam PGW": "Isac Jinton",
-    "CHG000000175220": "Internal change notification\nNone",
-    "Changes": "Incidents",
-    "Closed": "15/Jun/25",
-    "Connectivity issue with MDN 5224826132 in Germany Test plant": "Khwaja Rahman",
-    "Create subtask": "Link work item\nLink web pages and more",
-    "Created": "Time to resolution",
-    "Created June 21, 2025 at 6:11 PM": "Updated 2 days ago",
-    "Customer details": "Silvia-Ioana Gonciulea",
-    "DNS, AAA, Netflow updates": "Isac Jinton",
-    "Dashboards": "Teams",
-    "DataPacket Frankfurt: planned maintenance, Jun 24": "Silvia-Ioana Gonciulea",
-    "DataPacket – Planned Emergency network maintenance in Amsterdam 13.6.2025": "Silvia-Ioana Gonciulea",
-    "Datapacket Planned emergency maintenance in Los Angeles, Jun 23": "Silvia-Ioana Gonciulea",
-    "Datapacket Planned maintenance in Amsterdam, Jun 18": "Silvia-Ioana Gonciulea",
-    "Datapacket Planned maintenance in Los Angeles, Jun 30": "Silvia-Ioana Gonciulea",
-    "Description": "Datapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nExpected customer impact\n\nno customer impact\nExpected customer impact\n\nno customer impact\nExpected customer impact\n\nno customer impact\nExpected customer impact\nExpected customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nChange type\nNormal\nChange type\nNormal\nChange type\nNormal\nChange type\nNormal\nChange type\nChange type\nNormal\nNormal\nPlanned start\nJun 30, 2025, 2:00 PM\nPlanned start\nJun 30, 2025, 2:00 PM\nPlanned start\nJun 30, 2025, 2:00 PM\nPlanned start\nJun 30, 2025, 2:00 PM\nPlanned start\nPlanned start\nJun 30, 2025, 2:00 PM\nJun 30, 2025, 2:00 PM\nPlanned end\nJun 30, 2025, 5:00 PM\nPlanned end\nJun 30, 2025, 5:00 PM\nPlanned end\nJun 30, 2025, 5:00 PM\nPlanned end\nJun 30, 2025, 5:00 PM\nPlanned end\nPlanned end\nJun 30, 2025, 5:00 PM\nJun 30, 2025, 5:00 PM\nImpact\nNon Service Affecting\nImpact\nNon Service Affecting\nImpact\nNon Service Affecting\nImpact\nNon Service Affecting\nImpact\nImpact\nNon Service Affecting\nNon Service Affecting\nChange risk\nMedium\nChange risk\nMedium\nChange risk\nMedium\nChange risk\nMedium\nChange risk\nChange risk\nMedium\nMedium\nTest plan\ncheck service functionality before, during and after the change\nTest plan\ncheck service functionality before, during and after the change\nTest plan\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\nImplementation plan\nno implementation on lolo side\nImplementation plan\nno implementation on lolo side\nImplementation plan\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nBackout plan\nrollback\nBackout plan\nrollback\nBackout plan\nrollback\nrollback\nrollback\nrollback\nrollback\nrollback\nrollback\nrollback\nrollback\nrollback\nRisk summary\nChanges \nIncidents \nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nRisk summary\nChanges \nIncidents \nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nRisk summary\nChanges \nIncidents \nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nRisk summary\nChanges \nIncidents\nIncidents\nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nActivity\nShow:\nAll\nComments\nHistory\nWork log\nApprovals\nSummarize 4 comments\nNewest first\nAdd internal note\n / \nReply to customer\nPro tip: press \nM\n to comment\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nShow:\nAll\nComments\nHistory\nWork log\nApprovals\nSummarize 4 comments\nNewest first\nShow:\nAll\nComments\nHistory\nWork log\nApprovals\nShow:\nAll\nComments\nHistory\nWork log\nApprovals\nSummarize 4 comments\nNewest first\nNewest first\nNewest first\nAdd internal note\n / \nReply to customer\nPro tip: press \nM\n to comment\nAdd internal note\n / \nReply to customer\nPro tip: press \nM\n to comment\nAdd internal note\n / \nReply to customer\nPro tip: press \nM\n to comment\nAdd internal note\n / \nReply to customer\nAdd internal note\n / \nReply to customer\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nactivity successfully implemented\nactivity successfully implemented\nactivity successfully implemented\nactivity successfully implemented\nactivity successfully implemented\nactivity successfully implemented\nactivity successfully implemented\nactivity successfully implemented\nEdit\n·\nDelete\n·\n1\n1\n1\n1\n1\n1\n1\n1\n1\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\nHayam Ahmed\nHayam Ahmed\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nDhiraj Kaushik\nDhiraj Kaushik\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nReeta Nagarajan\nReeta Nagarajan\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nEdit\n·\nDelete\n·\nResize issue view side panel\nResize issue view side panel\nGive feedback\n5\nDone\nDone\nActions\nCustomer\nCustomer details\nSilvia-Ioana Gonciulea\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nMore fields\nApprovers, Labels, Organizations, Team\nAutomation\nRule executions\nCreated June 21, 2025 at 6:11 PM\nUpdated 2 days ago\nResolved 2 days ago\nGive feedback\n5\nDone\nDone\nActions\nCustomer\nCustomer details\nSilvia-Ioana Gonciulea\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nMore fields\nApprovers, Labels, Organizations, Team\nAutomation\nRule executions\nCreated June 21, 2025 at 6:11 PM\nUpdated 2 days ago\nResolved 2 days ago\nGive feedback\n5\nGive feedback\n5\nGive feedback\n5\nGive feedback\nGive feedback\nGive feedback\nGive feedback\n5\n5\n5\n5\n5\n5\nDone\nDone\nActions\nCustomer\nCustomer details\nSilvia-Ioana Gonciulea\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nMore fields\nApprovers, Labels, Organizations, Team\nAutomation\nRule executions\nCreated June 21, 2025 at 6:11 PM\nUpdated 2 days ago\nResolved 2 days ago\nDone\nDone\nActions\nDone\nDone\nActions\nDone\nDone\nActions\nDone\nDone\nDone\nDone\nDone\nDone\nDone\nDone\nDone\nActions\nCustomer\nCustomer details\nSilvia-Ioana Gonciulea\nCustomer\nCustomer\nCustomer\nCustomer details\nSilvia-Ioana Gonciulea\nCustomer details\nSilvia-Ioana Gonciulea\nCustomer details\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nMore fields\nApprovers, Labels, Organizations, Team\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nMore fields\nApprovers, Labels, Organizations, Team\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nDetails\nDetails\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nAssignee\nUnassigned\nAssign to me\nAssignee\nUnassigned\nAssign to me\nAssignee\nUnassigned\nAssign to me\nAssignee\nAssignee\nUnassigned\nAssign to me\nUnassigned\nAssign to me\nUnassigned\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nReporter\nSilvia-Ioana Gonciulea\nReporter\nSilvia-Ioana Gonciulea\nReporter\nReporter\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest Type\nLolo - Change\nRequest Type\nLolo - Change\nRequest Type\nRequest Type\nLolo - Change\nLolo - Change\nLolo - Change\nLolo - Change\nLolo - Change\nLolo - Change\nLolo - Change\nLolo - Change\nLolo - Change\nRequest participants\nNone\nRequest participants\nNone\nRequest participants\nNone\nRequest participants\nRequest participants\nNone\nNone\nNone\nNone\nNone\nNone\nNone\nAffected services\nAdd service\nAffected services\nAdd service\nAffected services\nAdd service\nAffected services\nAdd service\nAffected services\nAdd service\nAffected services\nActual start\nNone\nActual start\nNone\nActual start\nNone\nActual start\nNone\nActual start\nActual start\nNone\nNone\nActual end\nNone\nActual end\nNone\nActual end\nNone\nActual end\nNone\nActual end\nActual end\nNone\nNone\nCustomer External Issue ID\nCHG000000175220\nCustomer External Issue ID\nCHG000000175220\nCustomer External Issue ID\nCHG000000175220\nCustomer External Issue ID\nCHG000000175220\nCustomer External Issue ID\nCustomer External Issue",
-    "FRA PGW Hard failover test": "Silvia-Ioana Gonciulea",
-    "Filters": "Dashboards",
-    "Hayam Ahmed": "Unassigned",
-    "Implementation plan": "no implementation on lolo side",
-    "Isac Jinton": "Unassigned",
-    "Jira": "View request in portal",
-    "Jun 30, 2025, 2:00 PM": "Planned end\nJun 30, 2025, 5:00 PM",
-    "Jun 30, 2025, 5:00 PM": "Impact\nNon Service Affecting",
-    "KDDI API User": "Unassigned",
-    "Key": "Summary",
-    "Khwaja Rahman": "Unassigned",
-    "Link web pages and more": "Schedule change",
-    "Lolo - Change": "SP-313",
-    "Medium": "Test plan\ncheck service functionality before, during and after the change",
-    "More": "193 work items",
-    "Non Service Affecting": "Change risk\nMedium",
-    "None": "More fields\nApprovers, Labels, Organizations, Team",
-    "Normal": "Planned start\nJun 30, 2025, 2:00 PM",
-    "Partner Change": "SP-330",
-    "Partner Incident Email": "SP-331",
-    "Planned and Unplanned Maintenance for the next 14 days": "KDDI API User",
-    "Poor Verizon service quality in roaming partner coverage location": "Khwaja Rahman",
-    "Priority group": "Default\n4 queues\nAll open\n19\nAssigned to me\n0\nUnassigned\n13\nResolved\n193",
-    "Projects": "Filters",
-    "ProjectsSpherience PartnerQueues": "Resolved",
-    "ProjectsSpherience PartnerQueuesResolved": "ProjectsSpherience PartnerQueues",
-    "Queues": "Starred\nSelect the star icon next to your queues to add them here.",
-    "Reeta Nagarajan": "Unassigned",
-    "Reporter": "Assignee",
-    "Request Type": "Key",
-    "Request type": "Status",
-    "Request typeStatusAssigneeMore193 work items": "Request typeStatusAssigneeMore",
-    "Request typeStatusAssigneeMore193 work itemsTriage": "Request typeStatusAssigneeMore193 work items",
-    "Resolved": "18/Jun/25",
-    "Risk summary": "Changes",
-    "SC9709110": "Lolo - Change\n    \n\nSP-339Bringing down Amsterdam PGWIsac JintonUnassignedDone 24/Jun/25  25/Jun/25",
-    "Schedule change": "Add form",
-    "Silvia-Ioana Gonciulea": "Unassigned",
-    "Since we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.": "Edit\n·\nDelete\n·",
-    "Starred": "Priority group\nDefault\n4 queues\nAll open\n19\nAssigned to me\n0\nUnassigned\n13\nResolved\n193",
-    "Status": "Created",
-    "Summarize 4 comments": "Newest first",
-    "Summary": "Reporter",
-    "Teams": "Assets",
-    "Test plan": "check service functionality before, during and after the change",
-    "Thingspace not working": "Hayam Ahmed",
-    "Time to resolution": "Updated",
-    "Unify API update, AAA radius update, DNS proxy": "Isac Jinton",
-    "Updated": "External Issue ID",
-    "Updated 2 days ago": "Resolved 2 days ago",
-    "Verizon - Wireless - Incident": "SP-318",
-    "Your work": "Projects"
+let example_extracted_data_by_extractJiraTicketData = {
+  "ADP Connectivity issue": "Hayam Ahmed",
+  "Actions": "Customer\nCustomer details\nSilvia-Ioana Gonciulea",
+  "Activity": "Show:\nAll\nComments\nHistory\nWork log\nApprovals\nSummarize 4 comments\nNewest first",
+  "All queues": "Give feedback",
+  "Apps": "Create",
+  "Assets": "Apps",
+  "Assign to me": "Reporter\nSilvia-Ioana Gonciulea",
+  "Assignee": "Status",
+  "BMW ADP Redundancy tests - UP/AAA": "Silvia-Ioana Gonciulea",
+  "Back": "SP-336",
+  "Backout plan": "rollback",
+  "Bringing down Amsterdam PGW": "Isac Jinton",
+  "CHG000000175220": "Internal change notification\nNone",
+  "Changes": "Incidents",
+  "Closed": "15/Jun/25",
+  "Connectivity issue with MDN 5224826132 in Germany Test plant": "Khwaja Rahman",
+  "Create subtask": "Link work item\nLink web pages and more",
+  "Created": "Time to resolution",
+  "Created June 21, 2025 at 6:11 PM": "Updated 2 days ago",
+  "Customer details": "Silvia-Ioana Gonciulea",
+  "DNS, AAA, Netflow updates": "Isac Jinton",
+  "Dashboards": "Teams",
+  "DataPacket Frankfurt: planned maintenance, Jun 24": "Silvia-Ioana Gonciulea",
+  "DataPacket – Planned Emergency network maintenance in Amsterdam 13.6.2025": "Silvia-Ioana Gonciulea",
+  "Datapacket Planned emergency maintenance in Los Angeles, Jun 23": "Silvia-Ioana Gonciulea",
+  "Datapacket Planned maintenance in Amsterdam, Jun 18": "Silvia-Ioana Gonciulea",
+  "Datapacket Planned maintenance in Los Angeles, Jun 30": "Silvia-Ioana Gonciulea",
+  "Description": "Datapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nDatapacket message below:\n\nImpact Up to 5 minutes\n\nWork window Jun 30, 2025 12:00:00 PM—3:00:00 PM(UTC+03:00)\n\nDuration 3 hours\n\nFollowing recent changes to the STP topology aimed at improving routing efficiency and preventing potential issues, we are now proceeding with the final step: disconnecting legacy distribution switches. This maintenance is necessary to complete the transition and fully apply the new, optimized network structure.\n\nThis maintenance will result in a brief network service outage, lasting approximately 1 minute per server, with a maximum possible duration of up to 5 minutes.\n\nAffected servers:\n\nDP-25397lax-cspgw\n\nIf you experience any issues that persist beyond the expected window, please don’t hesitate to contact our support team.\nExpected customer impact\n\nno customer impact\nExpected customer impact\n\nno customer impact\nExpected customer impact\n\nno customer impact\nExpected customer impact\nExpected customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nno customer impact\nChange type\nNormal\nChange type\nNormal\nChange type\nNormal\nChange type\nNormal\nChange type\nChange type\nNormal\nNormal\nPlanned start\nJun 30, 2025, 2:00 PM\nPlanned start\nJun 30, 2025, 2:00 PM\nPlanned start\nJun 30, 2025, 2:00 PM\nPlanned start\nJun 30, 2025, 2:00 PM\nPlanned start\nPlanned start\nJun 30, 2025, 2:00 PM\nJun 30, 2025, 2:00 PM\nPlanned end\nJun 30, 2025, 5:00 PM\nPlanned end\nJun 30, 2025, 5:00 PM\nPlanned end\nJun 30, 2025, 5:00 PM\nPlanned end\nJun 30, 2025, 5:00 PM\nPlanned end\nPlanned end\nJun 30, 2025, 5:00 PM\nJun 30, 2025, 5:00 PM\nImpact\nNon Service Affecting\nImpact\nNon Service Affecting\nImpact\nNon Service Affecting\nImpact\nNon Service Affecting\nImpact\nImpact\nNon Service Affecting\nNon Service Affecting\nChange risk\nMedium\nChange risk\nMedium\nChange risk\nMedium\nChange risk\nMedium\nChange risk\nChange risk\nMedium\nMedium\nTest plan\ncheck service functionality before, during and after the change\nTest plan\ncheck service functionality before, during and after the change\nTest plan\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\ncheck service functionality before, during and after the change\nImplementation plan\nno implementation on lolo side\nImplementation plan\nno implementation on lolo side\nImplementation plan\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nno implementation on lolo side\nBackout plan\nrollback\nBackout plan\nrollback\nBackout plan\nrollback\nrollback\nrollback\nrollback\nrollback\nrollback\nrollback\nrollback\nrollback\nrollback\nRisk summary\nChanges \nIncidents \nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nRisk summary\nChanges \nIncidents \nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nRisk summary\nChanges \nIncidents \nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nRisk summary\nChanges \nIncidents\nIncidents\nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nYou have one or more missing fields. Add Affected services to view all the risks. \nLearn more about the risk insights panel\nWe couldn't find any conflicts.\nActivity\nShow:\nAll\nComments\nHistory\nWork log\nApprovals\nSummarize 4 comments\nNewest first\nAdd internal note\n / \nReply to customer\nPro tip: press \nM\n to comment\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nShow:\nAll\nComments\nHistory\nWork log\nApprovals\nSummarize 4 comments\nNewest first\nShow:\nAll\nComments\nHistory\nWork log\nApprovals\nShow:\nAll\nComments\nHistory\nWork log\nApprovals\nSummarize 4 comments\nNewest first\nNewest first\nNewest first\nAdd internal note\n / \nReply to customer\nPro tip: press \nM\n to comment\nAdd internal note\n / \nReply to customer\nPro tip: press \nM\n to comment\nAdd internal note\n / \nReply to customer\nPro tip: press \nM\n to comment\nAdd internal note\n / \nReply to customer\nAdd internal note\n / \nReply to customer\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\n\nEdit\n·\nDelete\n·\n1\nSilvia-Ioana Gonciulea \n2 days ago\n•\nInternal note\n\nactivity successfully implemented\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nactivity successfully implemented\nactivity successfully implemented\nactivity successfully implemented\nactivity successfully implemented\nactivity successfully implemented\nactivity successfully implemented\nactivity successfully implemented\nactivity successfully implemented\nEdit\n·\nDelete\n·\n1\n1\n1\n1\n1\n1\n1\n1\n1\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\n\nEdit\n·\nDelete\n·\nHayam Ahmed \n2 days ago\n•\nInternal note\n\nHello \nplease keep us updated once this CR finished \nThank you\nHayam Ahmed\nHayam Ahmed\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nHello \nplease keep us updated once this CR finished \nThank you\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\n\nEdit\n·\nDelete\n·\nDhiraj Kaushik \nlast month\n•\nInternal note\n\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nDhiraj Kaushik\nDhiraj Kaushik\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nSince we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\n\nEdit\n·\nDelete\n·\nReeta Nagarajan \nJune 23, 2025 at 2:51 PM\n•\nInternal note\n\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nReeta Nagarajan\nReeta Nagarajan\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nHi Silviya, \nI could find the planned start and end time as different in the description (12:00 PM to 3:00 pm) but in Planned start and Planned end time as 2:00 PM to 5:00 PM. Could you please clarify which time the maintenance will be executed on 30th June. Thank you\nEdit\n·\nDelete\n·\nResize issue view side panel\nResize issue view side panel\nGive feedback\n5\nDone\nDone\nActions\nCustomer\nCustomer details\nSilvia-Ioana Gonciulea\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nMore fields\nApprovers, Labels, Organizations, Team\nAutomation\nRule executions\nCreated June 21, 2025 at 6:11 PM\nUpdated 2 days ago\nResolved 2 days ago\nGive feedback\n5\nDone\nDone\nActions\nCustomer\nCustomer details\nSilvia-Ioana Gonciulea\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nMore fields\nApprovers, Labels, Organizations, Team\nAutomation\nRule executions\nCreated June 21, 2025 at 6:11 PM\nUpdated 2 days ago\nResolved 2 days ago\nGive feedback\n5\nGive feedback\n5\nGive feedback\n5\nGive feedback\nGive feedback\nGive feedback\nGive feedback\n5\n5\n5\n5\n5\n5\nDone\nDone\nActions\nCustomer\nCustomer details\nSilvia-Ioana Gonciulea\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nMore fields\nApprovers, Labels, Organizations, Team\nAutomation\nRule executions\nCreated June 21, 2025 at 6:11 PM\nUpdated 2 days ago\nResolved 2 days ago\nDone\nDone\nActions\nDone\nDone\nActions\nDone\nDone\nActions\nDone\nDone\nDone\nDone\nDone\nDone\nDone\nDone\nDone\nActions\nCustomer\nCustomer details\nSilvia-Ioana Gonciulea\nCustomer\nCustomer\nCustomer\nCustomer details\nSilvia-Ioana Gonciulea\nCustomer details\nSilvia-Ioana Gonciulea\nCustomer details\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nMore fields\nApprovers, Labels, Organizations, Team\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nMore fields\nApprovers, Labels, Organizations, Team\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nDetails\nDetails\nDetails\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nAssignee\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest participants\nNone\nAffected services\nAdd service\nActual start\nNone\nActual end\nNone\nCustomer External Issue ID\nCHG000000175220\nInternal change notification\nNone\nAssignee\nUnassigned\nAssign to me\nAssignee\nUnassigned\nAssign to me\nAssignee\nUnassigned\nAssign to me\nAssignee\nAssignee\nUnassigned\nAssign to me\nUnassigned\nAssign to me\nUnassigned\nUnassigned\nAssign to me\nReporter\nSilvia-Ioana Gonciulea\nReporter\nSilvia-Ioana Gonciulea\nReporter\nSilvia-Ioana Gonciulea\nReporter\nReporter\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nSilvia-Ioana Gonciulea\nRequest Type\nLolo - Change\nRequest Type\nLolo - Change\nRequest Type\nLolo - Change\nRequest Type\nRequest Type\nLolo - Change\nLolo - Change\nLolo - Change\nLolo - Change\nLolo - Change\nLolo - Change\nLolo - Change\nLolo - Change\nLolo - Change\nRequest participants\nNone\nRequest participants\nNone\nRequest participants\nNone\nRequest participants\nRequest participants\nNone\nNone\nNone\nNone\nNone\nNone\nNone\nAffected services\nAdd service\nAffected services\nAdd service\nAffected services\nAdd service\nAffected services\nAdd service\nAffected services\nAdd service\nAffected services\nActual start\nNone\nActual start\nNone\nActual start\nNone\nActual start\nNone\nActual start\nActual start\nNone\nNone\nActual end\nNone\nActual end\nNone\nActual end\nNone\nActual end\nNone\nActual end\nActual end\nNone\nNone\nCustomer External Issue ID\nCHG000000175220\nCustomer External Issue ID\nCHG000000175220\nCustomer External Issue ID\nCHG000000175220\nCustomer External Issue ID\nCHG000000175220\nCustomer External Issue ID\nCustomer External Issue",
+  "FRA PGW Hard failover test": "Silvia-Ioana Gonciulea",
+  "Filters": "Dashboards",
+  "Hayam Ahmed": "Unassigned",
+  "Implementation plan": "no implementation on lolo side",
+  "Isac Jinton": "Unassigned",
+  "Jira": "View request in portal",
+  "Jun 30, 2025, 2:00 PM": "Planned end\nJun 30, 2025, 5:00 PM",
+  "Jun 30, 2025, 5:00 PM": "Impact\nNon Service Affecting",
+  "KDDI API User": "Unassigned",
+  "Key": "Summary",
+  "Khwaja Rahman": "Unassigned",
+  "Link web pages and more": "Schedule change",
+  "Lolo - Change": "SP-313",
+  "Medium": "Test plan\ncheck service functionality before, during and after the change",
+  "More": "193 work items",
+  "Non Service Affecting": "Change risk\nMedium",
+  "None": "More fields\nApprovers, Labels, Organizations, Team",
+  "Normal": "Planned start\nJun 30, 2025, 2:00 PM",
+  "Partner Change": "SP-330",
+  "Partner Incident Email": "SP-331",
+  "Planned and Unplanned Maintenance for the next 14 days": "KDDI API User",
+  "Poor Verizon service quality in roaming partner coverage location": "Khwaja Rahman",
+  "Priority group": "Default\n4 queues\nAll open\n19\nAssigned to me\n0\nUnassigned\n13\nResolved\n193",
+  "Projects": "Filters",
+  "ProjectsSpherience PartnerQueues": "Resolved",
+  "ProjectsSpherience PartnerQueuesResolved": "ProjectsSpherience PartnerQueues",
+  "Queues": "Starred\nSelect the star icon next to your queues to add them here.",
+  "Reeta Nagarajan": "Unassigned",
+  "Reporter": "Assignee",
+  "Request Type": "Key",
+  "Request type": "Status",
+  "Request typeStatusAssigneeMore193 work items": "Request typeStatusAssigneeMore",
+  "Request typeStatusAssigneeMore193 work itemsTriage": "Request typeStatusAssigneeMore193 work items",
+  "Resolved": "18/Jun/25",
+  "Risk summary": "Changes",
+  "SC9709110": "Lolo - Change\n    \n\nSP-339Bringing down Amsterdam PGWIsac JintonUnassignedDone 24/Jun/25  25/Jun/25",
+  "Schedule change": "Add form",
+  "Silvia-Ioana Gonciulea": "Unassigned",
+  "Since we are Live on 27th and this Change is planned for 30th June, Please monitor this closely to make sure there is no impact on the services in US.": "Edit\n·\nDelete\n·",
+  "Starred": "Priority group\nDefault\n4 queues\nAll open\n19\nAssigned to me\n0\nUnassigned\n13\nResolved\n193",
+  "Status": "Created",
+  "Summarize 4 comments": "Newest first",
+  "Summary": "Reporter",
+  "Teams": "Assets",
+  "Test plan": "check service functionality before, during and after the change",
+  "Thingspace not working": "Hayam Ahmed",
+  "Time to resolution": "Updated",
+  "Unify API update, AAA radius update, DNS proxy": "Isac Jinton",
+  "Updated": "External Issue ID",
+  "Updated 2 days ago": "Resolved 2 days ago",
+  "Verizon - Wireless - Incident": "SP-318",
+  "Your work": "Projects"
 }
 
-itsm_page_strings = {
-  "short description": "change_request.short_description",
-  "description": "change_request.description",
-  "service": "change_request.business_service_label",
-  "Configuration item": "change_request.cmdb_ci_label",
+let itsm_page_strings = {
+  "page_elements": {
+    "user_menu": { "class": "header-avatar-button contextual-zone-button user-menu", "role": "button", "data-id": "user-menu" }, // aria-label="Shooresh Sufiye FG-843 (ext.): Available"    data-tooltip="Shooresh Sufiye FG-843 (ext.): Available"
+  },
+  "cr": {
+    "short description": "change_request.short_description",
+    "description": "change_request.description",
+    "service": "change_request.business_service_label",
+    "Configuration item": "change_request.cmdb_ci_label",
 
+  },
+  "inc": {
+    "caller": "sys_display.incident.caller_id",
+    "orginator_group": "sys_display.incident.u_originator_group", // FT_cdmno25kddi
+    "service": "sys_display.incident.business_service_label", // Mobile Network, Connected Car
+    "service_offering": "sys_display.incident.service_offering", // cdmno25kddi#us cdmno25kddi#ca
+    "short description": "sys_readonly.incident.short_description",
+    "description": "sys_readonly.incident.description",
+  }
 }
 
-console.log("Content script loaded");
+console.log("✅ Content script loaded");

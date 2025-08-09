@@ -16,45 +16,51 @@
                 </a>
                 <h1 class="title">ITSM Helper</h1>
             </div>
-            <img
-                id="warning-icon"
-                src="../icons/warning-icon.webp"
-                class="warning-icon"
-            />
+            <text id="warning-icon" class="warning-icon">⚠️</text>
+            <text id="success-icon" class="success-icon">✅</text>
+            <text id="loading-icon" class="loading-icon">⏳</text>
             <h5 id="jira-id" class="jira-id">Jira ID: <span id="jira-id-value">-</span></h5>
         </div>
 
         <!-- Items -->
-        <div class="item-list">
+        <div class="item-list" id="helper-form">
+            <div class="dropdown">
+                <label for="item1">Ticket type</label>
+                <select id="ticket-type" name="ticket-type">
+                <option value="Change Request">Change request</option>
+                <option value="Incident">Incident</option>
+                </select>
+            </div>
+
             <div class="dropdown">
                 <label for="item1">Country</label>
-                <select id="item1" name="item1">
-                <option value="opt1a">USA</option>
-                <option value="opt1b">Canada</option>
+                <select id="country" name="item1">
+                <option value="usa">USA</option>
+                <option value="ca">Canada</option>
                 </select>
             </div>
 
             <div class="dropdown">
                 <label for="item2">Network</label>
-                <select id="item2" name="item2">
-                <option value="opt2a">VZW</option>
-                <option value="opt2b">Telus</option>
-                <option value="opt2b">LOLO</option>
-                <option value="opt2b">SEGRA</option>
+                <select id="mno" name="item2">
+                <option value="VZW">VZW</option>
+                <option value="Telus">Telus</option>
+                <option value="LOLO">LOLO</option>
+                <option value="SEGRA">SEGRA</option>
                 </select>
             </div>
 
             <div class="dropdown">
                 <label for="type_of_service">Service</label>
                 <select id="type_of_service" name="type_of_service">
-                <option value="opt3a">PROV/IT/SMDP+</option>
-                <option value="opt3b">DATA</option>
-                <option value="opt3c">SMS</option>
-                <option value="opt3d">VOICE / VOLTE</option>
-                <option value="opt3e">IP/APN/DNS/LEASEDLINE/Routing/PGW</option>
-                <option value="opt3f">SIM ORDER</option>
-                <option value="opt3g">FRAUD</option>
-                <option value="opt3g">OTHER</option>
+                <option value="PROV">PROV/IT/SMDP+</option>
+                <option value="DATA">DATA</option>
+                <option value="SMS">SMS</option>
+                <option value="VOICE">VOICE / VOLTE</option>
+                <option value="IP">IP/APN/DNS/LEASEDLINE/Routing/PGW</option>
+                <option value="SIM">SIM ORDER</option>
+                <option value="FRAUD">FRAUD</option>
+                <option value="OTHER">OTHER</option>
                 </select>
             </div>
         </div>

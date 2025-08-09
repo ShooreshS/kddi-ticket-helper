@@ -82,6 +82,21 @@ button:hover {
 .warning-icon {
   width: 24px;
   height: 24px;
+  font-size: 24px;
+  display: none;
+}
+
+.success-icon {
+  width: 24px;
+  height: 24px;
+  font-size: 24px;
+  display: none;
+}
+
+.loading-icon {
+  width: 24px;
+  height: 24px;
+  font-size: 24px;
   display: none;
 }
 
