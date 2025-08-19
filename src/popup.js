@@ -151,7 +151,14 @@ function preparePopupForm(data) {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log("[popup] msg: ", request);
-  if (request.action === 'extractedData') {
+  if (request.action === "block") {
+    console.warn("[popup] Block message received", request.reason);
+    chrome.storage.local.set({ orgUser: false });
+    // disable your UI, show warning
+    document.body.innerHTML = "<p>🚫 Access blocked. You are not allowed to use this extension.</p>";
+  }
+
+  else if (request.action === 'extractedData') {
     console.log('Data extracted', request.data);
     preparePopupForm(request.data);
     if (request.data.Back) {
@@ -171,8 +178,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 console.log('Listener for showWarningIcon added');
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   console.log('[popup] script loaded');
+  const { orgUser } = await chrome.storage.local.get("orgUser");
+
+  if (!orgUser) {
+    document.body.innerHTML = "<p>🚫 Access blocked. You are not allowed to use this extension.</p>";
+    console.log("USER IS NOOT ALLOWED");
+    return;
+  }
+
   const readButton = document.querySelector("#read-data");
   const pasteButton = document.querySelector("#paste-data");
   const selector = document.querySelector("#selector");

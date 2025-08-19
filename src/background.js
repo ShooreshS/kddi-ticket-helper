@@ -125,16 +125,16 @@ const init = async () => {
     console.log("[BG] init passed ");
 };
 
-
 (async () => {
     const ok = await isOrgUser();
     console.log("[BG] startup ok:", ok);
     await chrome.storage.local.set({ orgUser: !!ok });
     if (!ok) {
-        // Optionally show a blocked UI (popup) or a help tab
-        
         console.warn("[EXT] Not an allowed domain user — features disabled.");
+        await chrome.storage.local.set({ orgUser: false });
+        chrome.runtime.sendMessage({ action: "block", reason: "Not allowed" });
     } else {
+        await chrome.storage.local.set({ orgUser: true });
         init();
     }
 })();
@@ -264,7 +264,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     else {
-        console.warn('Unknown action:', request.action);
+        console.warn('[BG] Unknown action:', request.action);
         sendResponse({ status: 'error', message: 'Unknown action' });
     }
 
