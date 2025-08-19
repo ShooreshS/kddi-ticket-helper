@@ -7,7 +7,23 @@ console.log('[BG] Background script loaded');
 import AES from "crypto-js/aes";
 import Utf8 from "crypto-js/enc-utf8";
 // import { getKey, getAPI } from './creds.js';
-
+let tempResponse = {
+    "ticketSummary": "Datapacket Planned emergency maintenance in Los Angeles on Jun 30, 2025",
+    "shortSummary": "[CD][KDDI][Country][Network][Service] Short Description of the Issue",
+    "ticketDetails": {
+        "requestType": "Lolo - Change",
+        "ticketType": "Change Request",
+        "priority": "Non Service Affecting",
+        "country": "USA",
+        "description": "Impact: Up to 5 minutes of network service outage per server, with a maximum duration of up to 5 minutes...",
+        "plannedStart": "Jun 30, 2025, 2:00 PM",
+        "plannedEnd": "Jun 30, 2025, 5:00 PM",
+        "riskLevel": "Medium",
+        "testPlan": "Check service functionality before, during and after the change",
+        "backupPlan": "Rollback",
+        "additionalNotes": "Please keep us updated once this Change Request is finished."
+    }
+}
 // MARK: identity
 const ALLOWED_DOMAINS = ["kddia.spherience.io", "kddia.com"];
 const ENC_DATA = "U2FsdGVkX1+MaH+15ZHIIucNcro0jUwvC/A3pXnLP3mpCoOWYEgJvZipt4C1q2S5m5NK/t04koeHZEdjkUnwVYMqJHapVyag3YS+7zf8rF2kNaTk9Vbcd8z9V2UBWwj4QAymSXJSaZL2rbN6BB+qs1BfhEsOkQE9FEeH7qrAjW8PMzV2zjo5LC5ofaAg+akdFXSd9Ekc/XpIqHB157ZzKVT8oSr2ffPv8BaIA4RRp4EGaMlQw707yzaQUUIvj6TrNjSXF9GsfHE4hwifH0uvJ1CZrY5eE6NxbGEvYyc5wwNtgVVtf5KAQ50WFXKFymmpZAyYXRXoO0cWXsr743/s63cTeU8JCrmOX5cA3Nbpj0B9pdpCkDLkCFyD0Pqvt3DCsuYWt9vbO1cvFMl2RnoRUbP6TaYnd0IFHpl34h5Y7Ss=";
@@ -89,103 +105,103 @@ export const getCredentials = () => {
 
 // OPEN AI ====================
 async function createThread() {
-  const res = await fetch("https://api.openai.com/v1/threads", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${credentials.API_KEY}`,
-      "OpenAI-Organization": credentials.ORG_ID,
-      "OpenAI-Project": credentials.PROJ_ID,
-      "OpenAI-Beta": "assistants=v2",
-      "Content-Type": "application/json",
-    }
-  });
-  return res.json(); // returns { id: "thread_..." }
+    const res = await fetch("https://api.openai.com/v1/threads", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${credentials.API_KEY}`,
+            "OpenAI-Organization": credentials.ORG_ID,
+            "OpenAI-Project": credentials.PROJ_ID,
+            "OpenAI-Beta": "assistants=v2",
+            "Content-Type": "application/json",
+        }
+    });
+    return res.json(); // returns { id: "thread_..." }
 }
 async function addMessage(threadId, content) {
-  await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${credentials.API_KEY}`,
-      "OpenAI-Organization": credentials.ORG_ID,
-      "OpenAI-Project": credentials.PROJ_ID,
-      "OpenAI-Beta": "assistants=v2",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      role: "user",
-      content
-    })
-  });
+    await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${credentials.API_KEY}`,
+            "OpenAI-Organization": credentials.ORG_ID,
+            "OpenAI-Project": credentials.PROJ_ID,
+            "OpenAI-Beta": "assistants=v2",
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            role: "user",
+            content
+        })
+    });
 }
 async function runAssistant(threadId) {
-  const res = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${credentials.API_KEY}`,
-      "OpenAI-Organization": credentials.ORG_ID,
-      "OpenAI-Project": credentials.PROJ_ID,
-      "OpenAI-Beta": "assistants=v2",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      assistant_id: credentials.ASST_ID
-    })
-  });
-  return res.json(); // contains run.id
+    const res = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${credentials.API_KEY}`,
+            "OpenAI-Organization": credentials.ORG_ID,
+            "OpenAI-Project": credentials.PROJ_ID,
+            "OpenAI-Beta": "assistants=v2",
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            assistant_id: credentials.ASST_ID
+        })
+    });
+    return res.json(); // contains run.id
 }
 async function pollRun(threadId, runId) {
     let c = 0;
-  while (c++ < 10) {
-    const res = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {
-      headers: {
-        "Authorization": `Bearer ${credentials.API_KEY}`,
-        "OpenAI-Organization": credentials.ORG_ID,
-        "OpenAI-Project": credentials.PROJ_ID,
-      "OpenAI-Beta": "assistants=v2",
-      }
-    });
-    const run = await res.json();
-    console.log("[BG] run", run);
+    while (c++ < 10) {
+        const res = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {
+            headers: {
+                "Authorization": `Bearer ${credentials.API_KEY}`,
+                "OpenAI-Organization": credentials.ORG_ID,
+                "OpenAI-Project": credentials.PROJ_ID,
+                "OpenAI-Beta": "assistants=v2",
+            }
+        });
+        const run = await res.json();
+        console.log("[BG] run", run);
 
-    if (run.status === "completed") return run;
-    if (["failed", "cancelled", "expired"].includes(run.status)) {
-      throw new Error(`Run failed: ${run.status}`);
+        if (run.status === "completed") return run;
+        if (["failed", "cancelled", "expired"].includes(run.status)) {
+            throw new Error(`Run failed: ${run.status}`);
+        }
+        await new Promise(r => setTimeout(r, 1000));
     }
-    await new Promise(r => setTimeout(r, 1000));
-  }
 }
 async function listMessages(threadId) {
-  const res = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
-    headers: {
-      "Authorization": `Bearer ${credentials.API_KEY}`,
-      "OpenAI-Organization": credentials.ORG_ID,
-      "OpenAI-Project": credentials.PROJ_ID,
-    }
-  });
-  return res.json(); // contains array of messages
+    const res = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+        headers: {
+            "Authorization": `Bearer ${credentials.API_KEY}`,
+            "OpenAI-Organization": credentials.ORG_ID,
+            "OpenAI-Project": credentials.PROJ_ID,
+        }
+    });
+    return res.json(); // contains array of messages
 }
 async function chatWithAssistant(userInput) {
-  // get or create thread
-  let { threadId } = await chrome.storage.local.get("threadId");
-  if (!threadId) {
-    const thread = await createThread();
-    threadId = thread.id;
-    await chrome.storage.local.set({ threadId });
-  }
+    // get or create thread
+    let { threadId } = await chrome.storage.local.get("threadId");
+    if (!threadId) {
+        const thread = await createThread();
+        threadId = thread.id;
+        await chrome.storage.local.set({ threadId });
+    }
 
-  // add user input
-  await addMessage(threadId, userInput);
+    // add user input
+    await addMessage(threadId, userInput);
 
-  // run assistant
-  const run = await runAssistant(threadId);
-  console.log("[BG][chatWithAssistant] run", run, "threadId", threadId, "userInput ", userInput );
-  // wait until done
-  await pollRun(threadId, run.id);
+    // run assistant
+    const run = await runAssistant(threadId);
+    console.log("[BG][chatWithAssistant] run", run, "threadId", threadId, "userInput ", userInput);
+    // wait until done
+    await pollRun(threadId, run.id);
 
-  // get assistant reply
-  const messages = await listMessages(threadId);
-  const reply = messages.data[0].content[0].text.value;
-  return reply;
+    // get assistant reply
+    const messages = await listMessages(threadId);
+    const reply = messages.data[0].content[0].text.value;
+    return reply;
 }
 
 // OPEN AI ====================
@@ -254,15 +270,18 @@ const init = async () => {
 
 async function assist(data) {
     return new Promise((resolve, reject) => {
-        chatWithAssistant(data).then(response =>{
-            console.log("[BG] assist response ",response);
+        let debug = true;
+        if (debug)
+            resolve(tempResponse);
+        chatWithAssistant(data).then(response => {
+            console.log("[BG] assist response ", response);
             if (!response.ok) {
                 resolve(response.data.choices[0].message.content);
             } else {
                 reject(`Error: ${response.status} ${response.data.error.message}}`);
             }
         }).catch(e => {
-             reject(`Error: ${e.message}}`);
+            reject(`Error: ${e.message}}`);
         });
         // fetch("https://api.openai.com/v1/chat/completions", {
         //     method: "POST",
