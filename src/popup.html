@@ -1,18 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Support Ticket Manager</title>
     <link rel="stylesheet" href="popup.css">
 </head>
+
 <body>
     <div id="popup-container">
         <!-- Title Row -->
         <div class="title-row">
             <div class="left-section">
                 <a href="https://shooreshs.github.io/messy-xml-viewer/privacy-policy.html">
-                <img src="../icons/icon64.png" alt="Icon" class="icon" />
+                    <img src="../icons/icon64.png" alt="Icon" class="icon" />
                 </a>
                 <h1 class="title">ITSM Helper</h1>
             </div>
@@ -25,42 +27,46 @@
         <!-- Items -->
         <div class="item-list" id="helper-form">
             <div class="dropdown">
-                <label for="item1">Ticket type</label>
+                <label for="ticket-type">Ticket type</label>
                 <select id="ticket-type" name="ticket-type">
-                <option value="Change Request">Change request</option>
-                <option value="Incident">Incident</option>
+                    <option value=""></option>
+                    <option value="Change Request">Change request</option>
+                    <option value="Incident">Incident</option>
                 </select>
             </div>
 
             <div class="dropdown">
-                <label for="item1">Country</label>
-                <select id="country" name="item1">
-                <option value="usa">USA</option>
-                <option value="ca">Canada</option>
+                <label for="country">Country</label>
+                <select id="country" name="country">
+                    <option value=""></option>
+                    <option value="usa">USA</option>
+                    <option value="ca">Canada</option>
                 </select>
             </div>
 
             <div class="dropdown">
-                <label for="item2">Network</label>
-                <select id="mno" name="item2">
-                <option value="VZW">VZW</option>
-                <option value="Telus">Telus</option>
-                <option value="LOLO">LOLO</option>
-                <option value="SEGRA">SEGRA</option>
+                <label for="mno">Network</label>
+                <select id="mno" name="mno">
+                    <option value=""></option>
+                    <option value="VZW">VZW</option>
+                    <option value="Telus">Telus</option>
+                    <option value="LOLO">LOLO</option>
+                    <option value="SEGRA">SEGRA</option>
                 </select>
             </div>
 
             <div class="dropdown">
                 <label for="type_of_service">Service</label>
                 <select id="type_of_service" name="type_of_service">
-                <option value="PROV">PROV/IT/SMDP+</option>
-                <option value="DATA">DATA</option>
-                <option value="SMS">SMS</option>
-                <option value="VOICE">VOICE / VOLTE</option>
-                <option value="IP">IP/APN/DNS/LEASEDLINE/Routing/PGW</option>
-                <option value="SIM">SIM ORDER</option>
-                <option value="FRAUD">FRAUD</option>
-                <option value="OTHER">OTHER</option>
+                    <option value=""></option>
+                    <option value="PROV">PROV/IT/SMDP+</option>
+                    <option value="DATA">DATA</option>
+                    <option value="SMS">SMS</option>
+                    <option value="VOICE">VOICE / VOLTE</option>
+                    <option value="IP">IP/APN/DNS/LEASEDLINE/Routing/PGW</option>
+                    <option value="SIM">SIM ORDER</option>
+                    <option value="FRAUD">FRAUD</option>
+                    <option value="OTHER">OTHER</option>
                 </select>
             </div>
         </div>
@@ -68,12 +74,13 @@
         <hr />
 
         <div id="buttons-container" class="button-row">
-        <button id="selector">Select</button>
-        <!-- <button id="read-data">Change Tasks</button> -->
-        <button id="paste-data">Fill-in</button>
+            <button id="selector">Select</button>
+            <!-- <button id="read-data">Change Tasks</button> -->
+            <button id="paste-data">Fill-in</button>
         </div>
         <div id="status-message"></div>
     </div>
-    <script src="popup.js" type="module" ></script>
+    <script src="popup.js" type="module"></script>
 </body>
+
 </html>

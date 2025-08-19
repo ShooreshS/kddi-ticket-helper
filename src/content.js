@@ -7,10 +7,13 @@ console.log('Content script loaded into:', window.location.href);
 let hoverBox = null;
 let lastTarget = null;
 const IS_TOP = window === window.top;
+var tabUrl = window.location.href;
+var ticketID = null;
 
-async function extractJiraTicketData() {
+
+async function extractJiraTicketData(selected) {
   console.log('🔍 Extracting Jira ticket data...');
-  const allDivs = [...document.querySelectorAll("div")];
+  const allDivs = selected; // [...document.querySelectorAll("div")];
   const result = {};
   let currentLabel = null;
 
@@ -81,6 +84,13 @@ async function extractJiraTicketData() {
   if (descriptionText) result["Description"] = descriptionText.trim();
   if (Object.keys(deviceDetails).length) result["Device details"] = deviceDetails;
 
+  if (tabUrl !== null) {
+    console.log("Current tab URL:", tabUrl);
+    const ticketID = tabUrl.split("/").pop();
+    result["ticketID"] = ticketID;
+    console.log("[BG] jira: ", ticketID);
+  }
+  console.log("[BG] result: ", result);
   return result;
 }
 
@@ -158,6 +168,15 @@ async function onClick(e) {
   hoverBox = null;
   lastTarget = null;
 
+  // var extracted = await extractJiraTicketData(selected);
+  // console.log("[BG] data Extracted: \n", extracted);
+
+  if (tabUrl !== null) {
+    ticketID = tabUrl.split("/").pop();
+    console.log("[content] jira: ", ticketID);
+    chrome.runtime.sendMessage({ action: 'ticketID', id: ticketID });
+  }
+
   chrome.runtime.sendMessage({ action: 'saveTicketData', data });
 
 
@@ -231,46 +250,57 @@ function setTopLevelElement(selector, value) {
   });
 }
 
-async function fillInData(data) {
+async function fillInData(data, userInput) {
   console.log('[fillInData] Filling in data:\n', data);
   let tempData = example_gpt_incident_response;
 
-  var ticketType = "";
+  var ticketTypeTemp = "";
   if (tempData.ticketDetails.requestType.includes('Change')) {
-    ticketType = 'change_request';
+    ticketTypeTemp = 'change_request';
   } else {
-    ticketType = 'incident';
+    ticketTypeTemp = 'incident';
   }
-  console.log('Ticket type:', ticketType);
+  console.log('Ticket type:', ticketTypeTemp);
+
+  const country = userInput.country == "" ? tempData.ticketDetails.country : userInput.country;
+  const ticketType = userInput.ticketType == "" ? ticketTypeTemp : userInput.ticketType;
+  const mno = userInput.mno == "" ? tempData.network : userInput.mno;
+  const service = userInput.service == "" ? tempData.service : userInput.service;
+  const jiraID = userInput.jiraID == "" ? tempData.kddiRef : userInput.jiraID;
+
 
   try {
     let caller = await getTopLevelElement('.header-avatar-button.contextual-zone-button.user-menu', 'getAttribute', 'aria-label');
 
     // FORM elements
-    let shortDescriptionEl = document.querySelector(`#${ticketType}\\.short_description`);
-    let descriptionEl = document.querySelector(`#${ticketType}\\.description`);
-    let serviceEl = document.querySelector(`#sys_display\\.${ticketType}\\.business_service`);
-    let serviceOfferingEl = document.querySelector(`#sys_display\\.${ticketType}\\.service_offering`);
-    let configItemEl = document.getElementById(`${ticketType}.cmdb_ci_label`);
-    let callerEl = document.getElementById(`sys_display.${ticketType}.caller_id`);
-    let assigneeGroupEl = document.querySelector(`#sys_display\\.${ticketType}\\.assignment_group`);
-    let orginatorGroupEl = document.getElementById(`sys_display.${ticketType}.u_originator_group`);
-    let assigneeEl = document.querySelector(`#sys_display\\.${ticketType}\\.assigned_to`);
+    let shortDescriptionEl = document.querySelector(`#${ticketTypeTemp}\\.short_description`);
+    let descriptionEl = document.querySelector(`#${ticketTypeTemp}\\.description`);
+    let serviceEl = document.querySelector(`#sys_display\\.${ticketTypeTemp}\\.business_service`);
+    let serviceOfferingEl = document.querySelector(`#sys_display\\.${ticketTypeTemp}\\.service_offering`);
+    let configItemEl = document.getElementById(`${ticketTypeTemp}.cmdb_ci_label`);
+    let callerEl = document.getElementById(`sys_display.${ticketTypeTemp}.caller_id`);
+    let assigneeGroupEl = document.querySelector(`#sys_display\\.${ticketTypeTemp}\\.assignment_group`);
+    let orginatorGroupEl = document.getElementById(`sys_display.${ticketTypeTemp}.u_originator_group`);
+    let assigneeEl = document.querySelector(`#sys_display\\.${ticketTypeTemp}\\.assigned_to`);
+
+
+
 
     // FILL IN THE FORM
     callerEl.value = caller;
     orginatorGroupEl.value = 'FT_cdmno25kddi';
     serviceEl.value = 'Mobile Network, Connected Car';
-    serviceOfferingEl.value = tempData.ticketDetails.country == 'USA' ? 'cdmno25kddi#us' : 'cdmno25kddi#ca';
+    serviceOfferingEl.value = country === "USA" ? "cdmno25kddi#us" : "cdmno25kddi#ca";
     assigneeGroupEl.value = 'FT_cdmno25kddi';
+
     if (ticketType === 'incident') {
       assigneeEl.value = caller;
     }
     shortDescriptionEl.value = tempData.shortSummary
-      .replace('Country', tempData.country)
-      .replace('Network', tempData.network)
-      .replace('Service', tempData.service)
-      .replace('SP:xx', tempData.kddiRef) || '';
+      .replace('Country', country)
+      .replace('Network', mno)
+      .replace('Service', service)
+      .replace('SP:xx', jiraID) || '';
     descriptionEl.value = tempData.ticketSummary || '';
 
   } catch (error) {
@@ -293,6 +323,8 @@ if (IS_TOP) {
       console.log('[content] Extracting ticket data from the page...');
       async () => {
         const data = await extractJiraTicketData();
+        console.log("[BG] data Extracted: \n", data);
+
         sendResponse(data);
       }
     }
@@ -359,9 +391,9 @@ if (!IS_TOP) {
         console.log('[iframe] Retrieved ticket data from storage:', result);
         if (result.ticketData) {
           console.log('[iframe] Retrieved ticket data:', result.ticketData);
-          const formattedData = await formatData(ticketData);
+          const formattedData = await formatData(result.ticketDat);
           console.log('Formatted data:', formattedData);
-          fillInData(result.ticketData);
+          fillInData(result.ticketData, request.input);
           sendResponse({ status: 'success', message: 'Data pasted successfully' });
         } else {
           console.error('No ticket data found in storage.');
@@ -379,7 +411,6 @@ function getSubtasks(ticketType) {
   // For now, returning a placeholder array
   return ['Subtask 1 for ' + ticketType, 'Subtask 2 for ' + ticketType];
 }
-
 
 let example_extracted_data_by_extractJiraTicketData = {
   "ADP Connectivity issue": "Hayam Ahmed",

@@ -1,6 +1,8 @@
 
 import { formatData } from './background.js';
 
+const jiraId = document.querySelector("#jira-id-value");
+
 let itsm_page_strings = {
   "page_elements": {
     "user_menu": { "class": "header-avatar-button contextual-zone-button user-menu", "role": "button", "data-id": "user-menu" }, // aria-label="Shooresh Sufiye FG-843 (ext.): Available"    data-tooltip="Shooresh Sufiye FG-843 (ext.): Available"
@@ -154,15 +156,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "block") {
     console.warn("[popup] Block message received", request.reason);
     chrome.storage.local.set({ orgUser: false });
-    // disable your UI, show warning
     document.body.innerHTML = "<p>🚫 Access blocked. You are not allowed to use this extension.</p>";
+  }
+
+  else if (request.action === "ticketID") {
+    if (request.id) {
+      jiraId.textContent = request.id || '-';
+      console.log('Jira ID set:', jiraId.textContent);
+    } else {
+      jiraId.textContent = '-';
+      showWarningIcon();
+      console.log('Jira ID reset');
+    }
+
   }
 
   else if (request.action === 'extractedData') {
     console.log('Data extracted', request.data);
     preparePopupForm(request.data);
-    if (request.data.Back) {
-      jiraId.textContent = request.data.Back || '-';
+    if (request.data.ticketID) {
+      jiraId.textContent = request.data.ticketID || '-';
       console.log('Jira ID set:', jiraId.textContent);
     } else {
       jiraId.textContent = '-';
@@ -191,7 +204,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const readButton = document.querySelector("#read-data");
   const pasteButton = document.querySelector("#paste-data");
   const selector = document.querySelector("#selector");
-  const jiraId = document.querySelector("#jira-id-value");
+
+  const ticketTypeSelect = document.querySelector("#ticket-type");
+  const countrySelect = document.querySelector("#country");
+  const mnoSelect = document.querySelector("#mno");
+  const serviceSelect = document.querySelector("#type_of_service");
+
 
   selector.addEventListener('click', async () => {
     console.log('[popup] SELECTOR pressed', window.location.hostname);
@@ -257,7 +275,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     showLoadingIcon();
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     chrome.tabs.sendMessage(tab.id,
-      { action: 'pasteTicketData' },
+      {
+        action: 'pasteTicketData', input: {
+          ticketType: ticketTypeSelect.value,
+          county: countrySelect.value,
+          mno: mnoSelect.valid,
+          service: serviceSelect.value,
+          jiraID: jiraId.textContent
+        }
+      },
       (response) => {
         if (response.status && response.status !== 'success') {
           console.warn('[popup] Error pasting data: something went wrong!');
@@ -270,5 +296,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   });
 });
+
+(async () => {
+  // setTimeout(async () => {
+    let ticketID = await chrome.storage.local.get("ticketID");
+    console.log("[popup] ticketID: ", ticketID);
+    jiraId.textContent = ticketID.ticketID || "bigh";
+  // }, 2000);
+
+})();
+
 
 console.log("[popup] loaded");
