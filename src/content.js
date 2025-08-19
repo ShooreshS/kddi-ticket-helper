@@ -1,7 +1,12 @@
 
-
+import { formatData } from './background.js';
 
 console.log('Content script loaded into:', window.location.href);
+
+// Picker
+let hoverBox = null;
+let lastTarget = null;
+const IS_TOP = window === window.top;
 
 async function extractJiraTicketData() {
   console.log('🔍 Extracting Jira ticket data...');
@@ -78,23 +83,19 @@ async function extractJiraTicketData() {
 
   return result;
 }
-// Picker
-let hoverBox = null;
-let lastTarget = null;
-const IS_TOP = window === window.top;
 
 // DEBUG ONLY
 let example_gpt_incident_response = {
+  "kddiRef": "SP-336",
+  "country": "USA",
+  "network": "LOLO",
+  "service": "DATA",
   "ticketSummary": "Datapacket Planned emergency maintenance in Los Angeles on Jun 30, 2025",
   "shortSummary": "[CD][KDDI][Country][Network][Service][SP:xx] Short Description of the Issue###Outage/NoOutage###",
   "ticketDetails": {
     "requestType": "Lolo - Incident",
     "ticketType": "Change Request",
     "priority": "Non Service Affecting",
-    "country": "USA",
-    "network": "LOLO",
-    "service": "DATA",
-    "spRef": "SP-336",
     "description": "Impact: Up to 5 minutes of network service outage per server, with a maximum duration of up to 5 minutes...",
     "plannedStart": "Jun 30, 2025, 2:00 PM",
     "plannedEnd": "Jun 30, 2025, 5:00 PM",
@@ -233,7 +234,6 @@ function setTopLevelElement(selector, value) {
 async function fillInData(data) {
   console.log('[fillInData] Filling in data:\n', data);
   let tempData = example_gpt_incident_response;
-  console.log('[DEBUG] Filling in data:', tempData);
 
   var ticketType = "";
   if (tempData.ticketDetails.requestType.includes('Change')) {
@@ -245,32 +245,37 @@ async function fillInData(data) {
 
   try {
     let caller = await getTopLevelElement('.header-avatar-button.contextual-zone-button.user-menu', 'getAttribute', 'aria-label');
+
     // FORM elements
     let shortDescriptionEl = document.querySelector(`#${ticketType}\\.short_description`);
-      // document.getElementById(`sys_readonly.${ticketType}.short_description`);
     let descriptionEl = document.querySelector(`#${ticketType}\\.description`);
-    //  document.getElementById(`sys_readonly.${ticketType}.description`);
     let serviceEl = document.querySelector(`#sys_display\\.${ticketType}\\.business_service`);
     let serviceOfferingEl = document.querySelector(`#sys_display\\.${ticketType}\\.service_offering`);
     let configItemEl = document.getElementById(`${ticketType}.cmdb_ci_label`);
-
     let callerEl = document.getElementById(`sys_display.${ticketType}.caller_id`);
+    let assigneeGroupEl = document.querySelector(`#sys_display\\.${ticketType}\\.assignment_group`);
     let orginatorGroupEl = document.getElementById(`sys_display.${ticketType}.u_originator_group`);
+    let assigneeEl = document.querySelector(`#sys_display\\.${ticketType}\\.assigned_to`);
 
     // FILL IN THE FORM
     callerEl.value = caller;
     orginatorGroupEl.value = 'FT_cdmno25kddi';
     serviceEl.value = 'Mobile Network, Connected Car';
     serviceOfferingEl.value = tempData.ticketDetails.country == 'USA' ? 'cdmno25kddi#us' : 'cdmno25kddi#ca';
-
-    shortDescriptionEl.value = tempData.shortSummary.replace('Country', tempData.ticketDetails.country).replace('Network', tempData.ticketDetails.network).replace('Service', tempData.ticketDetails.service).replace('SP:xx', tempData.ticketDetails.spRef) || '';
+    assigneeGroupEl.value = 'FT_cdmno25kddi';
+    if (ticketType === 'incident') {
+      assigneeEl.value = caller;
+    }
+    shortDescriptionEl.value = tempData.shortSummary
+      .replace('Country', tempData.country)
+      .replace('Network', tempData.network)
+      .replace('Service', tempData.service)
+      .replace('SP:xx', tempData.kddiRef) || '';
     descriptionEl.value = tempData.ticketSummary || '';
 
   } catch (error) {
     console.error('Error filling in data:', error);
   }
-
-
 }
 
 // Listener from popup
@@ -334,7 +339,7 @@ if (IS_TOP) {
         }
       })();
     }
-    
+
     else {
       console.warn('[content] Unknown action:', request.action);
       sendResponse({ status: 'error', message: 'Unknown action' });
@@ -354,8 +359,8 @@ if (!IS_TOP) {
         console.log('[iframe] Retrieved ticket data from storage:', result);
         if (result.ticketData) {
           console.log('[iframe] Retrieved ticket data:', result.ticketData);
-          // const formattedData = await formatData(ticketData);
-          // console.log('Formatted data:', formattedData);
+          const formattedData = await formatData(ticketData);
+          console.log('Formatted data:', formattedData);
           fillInData(result.ticketData);
           sendResponse({ status: 'success', message: 'Data pasted successfully' });
         } else {

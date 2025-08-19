@@ -1,12 +1,174 @@
 // This file contains the background script for the Chrome extension. It manages the extension's lifecycle, handles events, and maintains data persistence across tabs using Chrome's storage API.
+import { OpenAI } from "openai";
+// import { getCredentials } from './config.js';
 
-import { ssrModuleExportsKey } from "vite/module-runner";
+console.log('[BG] Background script loaded');
+// CONFIG ====================
+import AES from "crypto-js/aes";
+import Utf8 from "crypto-js/enc-utf8";
+// import { getKey, getAPI } from './creds.js';
 
-console.log('Background script loaded');
+// MARK: identity
+const ALLOWED_DOMAINS = ["kddia.spherience.io", "kddia.com"];
+const ENC_DATA = "U2FsdGVkX1+MaH+15ZHIIucNcro0jUwvC/A3pXnLP3mpCoOWYEgJvZipt4C1q2S5m5NK/t04koeHZEdjkUnwVYMqJHapVyag3YS+7zf8rF2kNaTk9Vbcd8z9V2UBWwj4QAymSXJSaZL2rbN6BB+qs1BfhEsOkQE9FEeH7qrAjW8PMzV2zjo5LC5ofaAg+akdFXSd9Ekc/XpIqHB157ZzKVT8oSr2ffPv8BaIA4RRp4EGaMlQw707yzaQUUIvj6TrNjSXF9GsfHE4hwifH0uvJ1CZrY5eE6NxbGEvYyc5wwNtgVVtf5KAQ50WFXKFymmpZAyYXRXoO0cWXsr743/s63cTeU8JCrmOX5cA3Nbpj0B9pdpCkDLkCFyD0Pqvt3DCsuYWt9vbO1cvFMl2RnoRUbP6TaYnd0IFHpl34h5Y7Ss=";
+var ENCRYPTION_KEY = null;
+let credentials = null;
+let assistantsList = null;
 
-async function assistant(data) {
+async function isOrgUser() {
+    // Returns {email, id} if the user is signed in and you have identity.email
+    const info = await chrome.identity.getProfileUserInfo();
+    const email = (info?.email || "").toLowerCase();
+    console.log("[BG] email: ", email);
+    return email && ALLOWED_DOMAINS.some(d => email.endsWith("@" + d));
+}
+
+async function getKey() {
+    // const { orgUser } = await chrome.storage.local.get("orgUser");
+    // if (!orgUser) {
+    //     return "password";
+    // } else {
+    // TODO:
+    //   const key await fetch("https://codeiland.com/assist", {
+    //   method: "POST",
+    //   headers: {"Content-Type":"application/json"},
+    //   body: JSON.stringify({ user: "user@kddia.com" })
+    // });
+    return "b8d927049978168859a7d06affecacf563c50f1b444e55488a03eceeebd41cbf";
+    // }
+
+}
+
+function encryptData(data) {
+    if (typeof data === 'object') {
+        data = JSON.stringify(data);
+    }
+    const ctB64 = AES.encrypt(data, ENCRYPTION_KEY).toString(); // base64 string
+    return ctB64;
+}
+
+function decryptData(cipher) {
+    console.log();
+    const bytes = AES.decrypt(cipher, ENCRYPTION_KEY);
+    try {
+        let json = JSON.parse(bytes.toString(Utf8));
+        return json;
+    } catch (e) {
+        return bytes.toString(Utf8);
+    }
+}
+
+export const getCredentials = () => {
     return new Promise((resolve, reject) => {
-        resolve(data); // Placeholder for actual assistant logic
+        try {
+            let creds = decryptData(ENC_DATA);
+            if (typeof creds === 'string') {
+                try {
+                    creds = JSON.parse(creds);
+                } catch (e) {
+                    console.error('Bad JSON in creds string:');
+                    reject(e);
+                }
+            }
+            resolve(creds);
+        } catch (error) {
+            console.error('Error reading credentials:', error);
+            reject(error);
+        }
+    });
+};
+// CONFIG ====================
+
+
+const init = async () => {
+    try {
+        ENCRYPTION_KEY = await getKey();
+        while (ENCRYPTION_KEY === null) {
+            console.log('[BG] Waiting for KEY to be set...');
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        credentials = await getCredentials();
+        console.log('[BG] Credentials hasApiKey:', Boolean(credentials?.API_KEY));
+
+        console.log("[BG] credentials:", credentials);
+
+        const openai = new OpenAI({
+            apiKey: credentials.API_KEY,
+            organization: credentials.ORG_ID,
+            project: credentials.PROJ_ID,
+            dangerouslyAllowBrowser: true, // Needed for client-side use
+        });
+
+        const myAssistants = await openai.beta.assistants.list({
+            order: "desc",
+            limit: "10",
+        });
+
+        console.log("[BG]", myAssistants.data);
+
+        assistantsList = myAssistants.data;
+
+        console.log("[BG] assistant list");
+
+        let assistant = null;
+        console.log("[BG] retrieveing assistant");
+        await openai.beta.assistants.retrieve(credentials.ASST_ID)
+            .then((response) => {
+                assistant = response;
+            })
+            .catch((e) => {
+                console.log("[BG] OAI:", e.message);
+            });
+    } catch (err) {
+        console.error('Error retrieving credentials:', err);
+    }
+    console.log("[BG] init passed ");
+};
+
+
+(async () => {
+    const ok = await isOrgUser();
+    console.log("[BG] startup ok:", ok);
+    await chrome.storage.local.set({ orgUser: !!ok });
+    if (!ok) {
+        // Optionally show a blocked UI (popup) or a help tab
+        
+        console.warn("[EXT] Not an allowed domain user — features disabled.");
+    } else {
+        init();
+    }
+})();
+
+async function assist(data) {
+    return new Promise((resolve, reject) => {
+        fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": "Bearer " + credentials.API_KEY,
+                "OpenAI-Organization": credentials.ORG_ID,
+                "OpenAI-Project": credentials.PROJ_ID,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: "gpt-3.5-turbo",
+                assistant: ASST_ID,
+                messages: [
+                    { role: "user", content: data }
+                ]
+            })
+        }).then(response => {
+            if (!response.ok) {
+                data = response.data;
+                console.log('[BG] Assistant response:', response.body);
+                console.log('[BG] Assistant response data:', data);
+                resolve(data.choices[0].message.content);
+            } else {
+                reject(new Error(`Error: ${response.status} ${data.error.message}}`));
+            }
+        }).catch(error => {
+            console.error('Error fetching assistant response:', error);
+            throw error;
+        });
     });
 }
 
@@ -23,9 +185,9 @@ export function formatData(data) {
 
         if (ticketIsValid()) {
             // TODO: send datat to the formater backend
-            assistant(data)
+            assist(data)
                 .then(response => {
-                    console.log('Formatted response:', response);
+                    console.log('[BG] Formatted response:', response);
                     // if successful
                     resolve(response);
                 })
@@ -40,22 +202,23 @@ export function formatData(data) {
     });
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-    console.log('Extension installed');
-    return true;
-});
+// chrome.runtime.onInstalled.addListener(() => {
+//     console.log('[BG] Extension installed');
+// });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    console.log("[BG] adding Listeners");
+
     if (request.action === 'saveTicketData') {
-        console.log('Saving ticket data:', request.data);
+        console.log('[BG] Saving ticket data:', request.data);
         chrome.storage.local.set({ ticketData: request.data }, () => {
-            console.log('Ticket data saved to storage');
+            console.log('[BG] Ticket data saved to storage');
             sendResponse({ status: 'success' });
         });
         chrome.storage.local.get('ticketData', function (result) {
-            console.log('Data saved to storage:', result.ticketData);
+            console.log('[BG] Data saved to storage:', result.ticketData);
         });
-        console.log('BACKGROUND Data saved to storage:');
+        console.log('[BG] BACKGROUND Data saved to storage:');
     }
 
     else if (request.action === 'getTicketData') {
@@ -66,7 +229,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // { action: 'getElement', selector, func, attribute }
     else if (request.action === 'getElement') {
-        console.log('[background] Getting element:', request.selector);
+        console.log('[BG] Getting element:', request.selector);
 
         chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
             if (!tab) return sendResponse({ ok: false, error: 'No active tab' });
@@ -75,7 +238,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 { action: 'getElement', selector: request.selector, func: request.func, attribute: request.attribute },
                 { frameId: 0 },
                 (resp) => {
-                    console.log('[background] Element response:', resp);
+                    console.log('[BG] Element response:', resp);
                     if (chrome.runtime.lastError) sendResponse({ ok: false, error: chrome.runtime.lastError.message });
                     else sendResponse(resp);
                 }
@@ -84,7 +247,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     else if (request.action === 'setElement') {
-        console.log('[background] Setting element:', request.selector, request.value);
+        console.log('[BG] Setting element:', request.selector, request.value);
         chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
             if (!tab) return sendResponse({ ok: false, error: 'No active tab' });
             chrome.tabs.sendMessage(
@@ -92,7 +255,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 { action: 'setElement', selector: request.selector, value: request.value },
                 { frameId: 0 },
                 (resp) => {
-                    console.log('[background] Element set response:', resp);
+                    console.log('[BG] Element set response:', resp);
                     if (chrome.runtime.lastError) sendResponse({ ok: false, error: chrome.runtime.lastError.message });
                     else sendResponse(resp);
                 }
@@ -107,26 +270,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     return true; // Indicates that the response will be sent asynchronously
 });
-
-
-// The request was raised by Silvia-Ioana Gonciulea for a change related to disconnecting legacy distribution switches to optimize the network structure. 
-// The planned start for the change is on June 30, 2025, at 2:00 PM, and the planned end is at 5:00 PM. 
-// The impact of the change is expected to be non-service affecting. 
-// The risk level is medium, and the test plan involves checking service functionality before, during, and after the change. 
-// The implementation plan indicates that there will be no implementation on the side of lolo. There are several internal notes and comments related to the change, 
-// including requests for updates and clarifications on the maintenance window.
-
-
-// <input id="sys_display.incident.caller_id" 
-// name="sys_display.incident.caller_id" 
-// aria-labelledby="label.incident.caller_id" 
-// type="search" autocomplete="off" autocorrect="off" value="" 
-// ac_columns="user_name;email;first_name;last_name" ac_order_by="name" 
-// data-type="ac_reference_input" data-completer="AJAXTableCompleter" 
-// data-dependent="company" data-dependent-value="" data-ref-qual="" 
-// data-ref="incident.caller_id" data-ref-key="null" data-ref-dynamic="false" 
-// data-name="caller_id" data-table="sys_user" class="form-control element_reference_input" 
-// style="; " spellcheck="false" 
-// onfocus="if (!this.ac) addLoadEvent(function() {var e = gel('sys_display.incident.caller_id'); if (!e.ac) new AJAXTableCompleter(gel('sys_display.incident.caller_id'), 'incident.caller_id', 'company', ''); e.ac.onFocus();})" 
-// aria-required="true" role="combobox" aria-autocomplete="list" aria-owns="AC.incident.caller_id" 
-// aria-expanded="false" title="" aria-invalid="false"></input>
+console.log("[BG] Listeners added");

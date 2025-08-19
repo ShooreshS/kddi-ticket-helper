@@ -149,82 +149,90 @@ function preparePopupForm(data) {
 
 }
 
-document.addEventListener('DOMContentLoaded', function () {
-  console.log('Popup script loaded');
-  const readButton = document.getElementById('read-data');
-  const pasteButton = document.getElementById('paste-data');
-  const selector = document.getElementById('selector');
-  const jiraId = document.getElementById('jira-id-value');
-
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'extractedData') {
-      console.log('Data extracted', request.data);
-      preparePopupForm(request.data);
-      if (request.data.Back) {
-        jiraId.textContent = request.data.Back || '-';
-        console.log('Jira ID set:', jiraId.textContent);
-      } else {
-        jiraId.textContent = '-';
-        showWarningIcon();
-        console.log('Jira ID reset');
-      }
-    }
-    if (request.action === 'showWarningIcon') {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log("[popup] msg: ", request);
+  if (request.action === 'extractedData') {
+    console.log('Data extracted', request.data);
+    preparePopupForm(request.data);
+    if (request.data.Back) {
+      jiraId.textContent = request.data.Back || '-';
+      console.log('Jira ID set:', jiraId.textContent);
+    } else {
+      jiraId.textContent = '-';
       showWarningIcon();
+      console.log('Jira ID reset');
     }
-  });
-  console.log('Listener for showWarningIcon added');
+  }
+
+  else if (request.action === 'showWarningIcon') {
+    showWarningIcon();
+  }
+});
+
+console.log('Listener for showWarningIcon added');
+
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('[popup] script loaded');
+  const readButton = document.querySelector("#read-data");
+  const pasteButton = document.querySelector("#paste-data");
+  const selector = document.querySelector("#selector");
+  const jiraId = document.querySelector("#jira-id-value");
 
   selector.addEventListener('click', async () => {
-    console.log('SELECTOR pressed', window.location.hostname);
+    console.log('[popup] SELECTOR pressed', window.location.hostname);
 
-    const valid = await isValidUrl();
-    console.log('is valid URL:', valid);
-    if (!valid) {
-      console.log('This feature is only available for Atlassian and ServiceNow domains.');
+    const isValid = await isValidUrl();
+    console.log('[popup] is valid URL:', isValid);
+    if (!isValid) {
+      console.log('[popup] This feature is only available for Atlassian and ServiceNow domains.');
       showWarningIcon();
       return;
     }
 
     showLoadingIcon();
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    chrome.tabs.sendMessage(tab.id, { action: 'startPickerMode' });
-
-  });
-
-  readButton.addEventListener('click', async function () {
-    console.log('COPY pressed');
-
-    const valid = await isValidUrl();
-    console.log('is valid URL:', valid);
-    if (!valid) {
-      console.log('This feature is only available for Atlassian and ServiceNow domains.');
-      showWarningIcon();
-      return;
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      console.log("[popup] tab ", tab);
+      const resp = await chrome.tabs.sendMessage(tab.id, { action: 'startPickerMode' });
+      console.log("[popup] Response:", resp);
+    } catch (e) {
+      console.log("No content script in this tab:", e);
     }
-
-    chrome.tabs.query({ active: true, currentWindow: true }, async function (tabs) {
-
-      const activeTab = tabs[0];
-      console.log('Active tab ID:', activeTab.id);
-      console.log('sending :', { action: 'extractTicketData' });
-      await chrome.tabs.sendMessage(activeTab.id, { action: 'extractTicketData' }, function (response) {
-        if (response) {
-          showSuccessIcon();
-          console.log('✅ Data received:', typeof response);
-          chrome.storage.local.set({ ticketData: response });
-        } else {
-          console.log('No corrcect data received: ', response);
-        }
-      });
-    });
   });
+
+  // readButton.addEventListener('click', async function () {
+  //   console.log('COPY pressed');
+
+  //   const valid = await isValidUrl();
+  //   console.log('is valid URL:', valid);
+  //   if (!valid) {
+  //     console.log('This feature is only available for Atlassian and ServiceNow domains.');
+  //     showWarningIcon();
+  //     return;
+  //   }
+
+  //   chrome.tabs.query({ active: true, currentWindow: true }, async function (tabs) {
+
+  //     const activeTab = tabs[0];
+  //     console.log('Active tab ID:', activeTab.id);
+  //     console.log('sending :', { action: 'extractTicketData' });
+  //     await chrome.tabs.sendMessage(activeTab.id, { action: 'extractTicketData' }, function (response) {
+  //       if (response) {
+  //         showSuccessIcon();
+  //         console.log('✅ Data received:', typeof response);
+  //         chrome.storage.local.set({ ticketData: response });
+  //       } else {
+  //         console.log('No corrcect data received: ', response);
+  //       }
+  //     });
+  //   });
+  // });
 
   pasteButton.addEventListener('click', async function () {
-    console.log('Pasting data into destination tabs...');
+    console.log('[popup] Pasting data into destination tabs...');
 
     const valid = await isValidUrl();
-    console.log('is valid URL:', valid);
+    console.log('[popup] is valid URL:', valid);
     if (!valid) {
       console.log('This feature is only available for Atlassian and ServiceNow domains.');
       showWarningIcon();
@@ -237,13 +245,15 @@ document.addEventListener('DOMContentLoaded', function () {
       { action: 'pasteTicketData' },
       (response) => {
         if (response.status && response.status !== 'success') {
-          console.warn('Error pasting data: something went wrong!');
+          console.warn('[popup] Error pasting data: something went wrong!');
           showWarningIcon();
         } else {
-          console.log('Data pasted successfully:', response);
+          console.log('[popup] Data pasted successfully:', response);
           showSuccessIcon();
         }
       });
 
   });
 });
+
+console.log("[popup] loaded");

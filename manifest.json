@@ -7,7 +7,12 @@
     "tabs",
     "activeTab",
     "storage",
-    "clipboardRead"
+    "clipboardRead",
+    "identity",
+    "identity.email"
+  ],
+  "host_permissions": [
+    "https://api.openai.com/*"
   ],
   "background": {
     "service_worker": "src/background.js",
@@ -15,11 +20,13 @@
   },
   "content_scripts": [
     {
+      "js": [
+        "src/content.js"
+      ],
       "matches": [
         "*://*.atlassian.net/*",
         "*://*.service-now.com/*"
       ],
-      "js": ["src/content.js"],
       "run_at": "document_idle",
       "all_frames": true
     }
@@ -32,5 +39,11 @@
       "64": "public/icons/SSitsm.png",
       "128": "public/icons/SSitsm.png"
     }
+  },
+  "icons": {
+    "16": "public/icons/SSitsm.png",
+    "48": "public/icons/SSitsm.png",
+    "64": "public/icons/SSitsm.png",
+    "128": "public/icons/SSitsm.png"
   }
 }

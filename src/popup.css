@@ -17,12 +17,12 @@ h1 {
 button {
     background-color: #4CAF50;
     color: white;
-    border: none;
+    border: 1px solid #3e8e40;
     padding: 10px 15px;
     text-align: center;
     text-decoration: none;
     display: inline-block;
-    font-size: 16px;
+    font-size: 14px;
     margin: 4px 2px;
     cursor: pointer;
     border-radius: 5px;
@@ -130,7 +130,7 @@ hr {
   -webkit-appearance: none; /* For Safari */
   -moz-appearance: none; /* For Firefox */
 }
-
+/* equal width for all children */
 .button-row {
   display: flex;
   justify-content: space-between;
