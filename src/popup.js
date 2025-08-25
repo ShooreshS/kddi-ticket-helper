@@ -276,10 +276,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     chrome.tabs.sendMessage(tab.id,
       {
-        action: 'pasteTicketData', input: {
+        action: 'pasteTicketData', userInput: {
           ticketType: ticketTypeSelect.value,
-          county: countrySelect.value,
-          mno: mnoSelect.valid,
+          country: countrySelect.value,
+          mno: mnoSelect.value,
           service: serviceSelect.value,
           jiraID: jiraId.textContent
         }

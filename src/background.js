@@ -1,30 +1,10 @@
 // This file contains the background script for the Chrome extension. It manages the extension's lifecycle, handles events, and maintains data persistence across tabs using Chrome's storage API.
 import { OpenAI } from "openai";
-// import { getCredentials } from './config.js';
-
-console.log('[BG] Background script loaded');
-// CONFIG ====================
 import AES from "crypto-js/aes";
 import Utf8 from "crypto-js/enc-utf8";
-// import { getKey, getAPI } from './creds.js';
-let tempResponse = {
-    "ticketSummary": "Datapacket Planned emergency maintenance in Los Angeles on Jun 30, 2025",
-    "shortSummary": "[CD][KDDI][Country][Network][Service] Short Description of the Issue",
-    "ticketDetails": {
-        "requestType": "Lolo - Change",
-        "ticketType": "Change Request",
-        "priority": "Non Service Affecting",
-        "country": "USA",
-        "description": "Impact: Up to 5 minutes of network service outage per server, with a maximum duration of up to 5 minutes...",
-        "plannedStart": "Jun 30, 2025, 2:00 PM",
-        "plannedEnd": "Jun 30, 2025, 5:00 PM",
-        "riskLevel": "Medium",
-        "testPlan": "Check service functionality before, during and after the change",
-        "backupPlan": "Rollback",
-        "additionalNotes": "Please keep us updated once this Change Request is finished."
-    }
-}
-// MARK: identity
+
+// import { getCredentials } from './config.js';
+// MARK: Global
 const ALLOWED_DOMAINS = ["kddia.spherience.io", "kddia.com"];
 const ENC_DATA = "U2FsdGVkX1+MaH+15ZHIIucNcro0jUwvC/A3pXnLP3mpCoOWYEgJvZipt4C1q2S5m5NK/t04koeHZEdjkUnwVYMqJHapVyag3YS+7zf8rF2kNaTk9Vbcd8z9V2UBWwj4QAymSXJSaZL2rbN6BB+qs1BfhEsOkQE9FEeH7qrAjW8PMzV2zjo5LC5ofaAg+akdFXSd9Ekc/XpIqHB157ZzKVT8oSr2ffPv8BaIA4RRp4EGaMlQw707yzaQUUIvj6TrNjSXF9GsfHE4hwifH0uvJ1CZrY5eE6NxbGEvYyc5wwNtgVVtf5KAQ50WFXKFymmpZAyYXRXoO0cWXsr743/s63cTeU8JCrmOX5cA3Nbpj0B9pdpCkDLkCFyD0Pqvt3DCsuYWt9vbO1cvFMl2RnoRUbP6TaYnd0IFHpl34h5Y7Ss=";
 var ENCRYPTION_KEY = null;
@@ -32,7 +12,40 @@ let credentials = null;
 let assistantsList = null;
 let assistant = null;
 var thread = null;
+let tempResponse = {
+    "ticketSummary": "",
+    "shortSummary": "[CD][KDDI][Country][Network][Service] Short Description of the Issue",
+    "changeDescription": [
+        "Change reference:",
+        "Change description:",
+        "Customer impact description:",
+        "Planned start time:",
+        "Planned end time:",
+        "Outage start time:",
+        "Outage end time:",
+        "Affected Service / Components",
+        "Market / HUB affected:"
+    ],
+    "ticketDetails": {
+        "requestType": "",
+        "country": "",
+        "ticketType": "",
+        "network":"",
+        "service":"",
+        "jiraId":"",
+        "priority": "",
+        "description": "",
+        "plannedStart": "",
+        "plannedEnd": "",
+        "riskLevel": "",
+        "testPlan": "",
+        "backupPlan": "",
+        "additionalNotes": ""
+    }
+};
 
+console.log('[BG] Background script loaded');
+// CONFIG ====================
 async function isOrgUser() {
     // Returns {email, id} if the user is signed in and you have identity.email
     // try {
@@ -59,7 +72,6 @@ async function getKey() {
     // });
     return "b8d927049978168859a7d06affecacf563c50f1b444e55488a03eceeebd41cbf";
     // }
-
 }
 
 function encryptData(data) {
@@ -81,7 +93,7 @@ function decryptData(cipher) {
     }
 }
 
-export const getCredentials = () => {
+const getCredentials = () => {
     return new Promise((resolve, reject) => {
         try {
             let creds = decryptData(ENC_DATA);
@@ -100,8 +112,7 @@ export const getCredentials = () => {
         }
     });
 };
-// CONFIG ====================
-
+// CONFIG ---------------------
 
 // OPEN AI ====================
 async function createThread() {
@@ -203,8 +214,7 @@ async function chatWithAssistant(userInput) {
     const reply = messages.data[0].content[0].text.value;
     return reply;
 }
-
-// OPEN AI ====================
+// OPEN AI ---------------------
 
 const init = async () => {
     try {
@@ -271,8 +281,11 @@ const init = async () => {
 async function assist(data) {
     return new Promise((resolve, reject) => {
         let debug = true;
-        if (debug)
+        if (debug){
             resolve(tempResponse);
+            return;
+        }
+
         chatWithAssistant(data).then(response => {
             console.log("[BG] assist response ", response);
             if (!response.ok) {
@@ -347,10 +360,6 @@ export function formatData(data) {
     });
 }
 
-// chrome.runtime.onInstalled.addListener(() => {
-//     console.log('[BG] Extension installed');
-// });
-
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log("[BG] adding Listeners");
 
@@ -359,6 +368,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             console.log('[BG] ticketID saved to storage');
         });
     }
+
     else if (request.action === 'saveTicketData') {
         console.log('[BG] Saving ticket data:', request.data);
         chrome.storage.local.set({ ticketData: request.data }, () => {
@@ -377,8 +387,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
     }
 
-    // { action: 'getElement', selector, func, attribute }
     else if (request.action === 'getElement') {
+        // { action: 'getElement', selector, func, attribute }
         console.log('[BG] Getting element:', request.selector);
 
         chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
