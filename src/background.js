@@ -30,9 +30,9 @@ let tempResponse = {
         "requestType": "",
         "country": "",
         "ticketType": "",
-        "network":"",
-        "service":"",
-        "jiraId":"",
+        "network": "",
+        "service": "",
+        "jiraId": "",
         "priority": "",
         "description": "",
         "plannedStart": "",
@@ -128,7 +128,7 @@ async function createThread() {
     });
     return res.json(); // returns { id: "thread_..." }
 }
-async function addMessage(threadId, content) {
+async function addMessage(threadId, text) {
     await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
         method: "POST",
         headers: {
@@ -140,7 +140,10 @@ async function addMessage(threadId, content) {
         },
         body: JSON.stringify({
             role: "user",
-            content
+            content: [{
+                type: "text",
+                text
+            }]
         })
     });
 }
@@ -187,6 +190,7 @@ async function listMessages(threadId) {
             "Authorization": `Bearer ${credentials.API_KEY}`,
             "OpenAI-Organization": credentials.ORG_ID,
             "OpenAI-Project": credentials.PROJ_ID,
+            "OpenAI-Beta": "assistants=v2"
         }
     });
     return res.json(); // contains array of messages
@@ -281,7 +285,7 @@ const init = async () => {
 async function assist(data) {
     return new Promise((resolve, reject) => {
         let debug = true;
-        if (debug){
+        if (debug) {
             resolve(tempResponse);
             return;
         }
@@ -289,7 +293,7 @@ async function assist(data) {
         chatWithAssistant(data).then(response => {
             console.log("[BG] assist response ", response);
             if (!response.ok) {
-                resolve(response.data.choices[0].message.content);
+                resolve(response);
             } else {
                 reject(`Error: ${response.status} ${response.data.error.message}}`);
             }
@@ -343,7 +347,7 @@ export function formatData(data) {
 
         if (ticketIsValid()) {
             // TODO: send datat to the formater backend
-            assist(data)
+            assist(data.ticketData)
                 .then(response => {
                     console.log('[BG] Formatted response:', response);
                     // if successful
@@ -379,6 +383,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             console.log('[BG] Data saved to storage:', result.ticketData);
         });
         console.log('[BG] BACKGROUND Data saved to storage:');
+    }
+
+    else if (request.action == 'saveParentInfo') {
+        chrome.storage.local.set({ parentInfo: request.data }, () => {
+            console.log('[BG] Parent info saved to storage');
+            sendResponse({ status: 'success' });
+        });
+    }
+
+    else if (request.action == 'getParentInfo') {
+        chrome.storage.local.get('parentInfo', function (result) {
+            console.log('[BG] Data saved to storage:', result);
+            if (result)
+                sendResponse({ status: 'success', data: result });
+            else
+                sendResponse({ status: 'fail', data: "" });
+        });
     }
 
     else if (request.action === 'getTicketData') {

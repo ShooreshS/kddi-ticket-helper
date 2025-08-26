@@ -24,6 +24,41 @@ let itsm_page_strings = {
   }
 }
 
+const groupsByService = {
+  PROV: [
+    "FT_BMWSTM-Offboard-US-PROD"
+  ],
+  DATA: [
+    "FT_vehicle-connectivity-vbc-devopsteam",
+    "FT_vehicle-connectivity-vmp-2nd",
+    "FT_vehicle-connectivity-vdws-2nd",
+    "FT_Remote Services-Offboard-EMEA"
+  ],
+  SMS: [
+    "FT_vehicle-connectivity-vdws-2nd",
+    "FT_Remote Services-Offboard-EMEA",
+    "FT_Connected Call Services-2nd",
+    "FT_sms-gateway-ops-cd-us"
+  ],
+  VOICE: [
+    "FT_Connected Call Services-2nd"
+  ],
+  IP: [
+    "FT_vehicle-connectivity-vbc-devopsteam",
+    "FT_vehicle-connectivity-vmp-2nd",
+    "FT_cd-mno-support-us"
+  ],
+  SIM: [
+    "FT_cdsubmanager-emea"
+  ],
+  FRAUD: [
+    "FT_cdbmw-fraud-us"
+  ],
+  OTHER: [
+
+  ]
+};
+
 let example_gpt_cr_response = {
   "ticketSummary": "Datapacket Planned emergency maintenance in Los Angeles on Jun 30, 2025",
   "shortSummary": "[CD][KDDI][Country][Network][Service] Short Description of the Issue",
@@ -151,6 +186,31 @@ function preparePopupForm(data) {
 
 }
 
+
+function getParentInfo() {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ action: 'getInfo' }, (response) => {
+      if (response && response.status === 'success') {
+        resolve(response.data);
+      } else {
+        reject("Failed to get parent info");
+      }
+    });
+  });
+}
+
+
+async function fillChild() {
+  try {
+    const parentInfo = await getParentInfo();
+    console.log("Got parent info:", parentInfo);
+
+
+  } catch (err) {
+    console.error("Error getting parent info", err);
+  }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log("[popup] msg: ", request);
   if (request.action === "block") {
@@ -201,7 +261,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  const readButton = document.querySelector("#read-data");
+  const fillChildBtn = document.querySelector("#child-ticket");
   const pasteButton = document.querySelector("#paste-data");
   const selector = document.querySelector("#selector");
 
@@ -209,8 +269,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   const countrySelect = document.querySelector("#country");
   const mnoSelect = document.querySelector("#mno");
   const serviceSelect = document.querySelector("#type_of_service");
+  const assignmentGroups = document.querySelector("#assignment-groups");
 
+  serviceSelect.addEventListener("change", () => {
+    const selectedService = serviceSelect.value; // e.g. "DATA"
+    assignmentGroups.innerHTML = ""; // clear old radios
 
+    const groups = groupsByService[selectedService] || [];
+
+    groups.forEach(group => {
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+
+      input.type = "radio";
+      input.name = "assignmentGroup"; // all radios share same name
+      input.value = group;
+
+      label.appendChild(input);
+      label.append(" " + group);
+
+      assignmentGroups.appendChild(label);
+      assignmentGroups.appendChild(document.createElement("br"));
+    });
+  });
   selector.addEventListener('click', async () => {
     console.log('[popup] SELECTOR pressed', window.location.hostname);
 
@@ -295,13 +376,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
 
   });
+
+  fillChildBtn.addEventListener('click', async function () {
+    fillChild();
+  });
+
 });
 
 (async () => {
   // setTimeout(async () => {
-    let ticketID = await chrome.storage.local.get("ticketID");
-    console.log("[popup] ticketID: ", ticketID);
-    jiraId.textContent = ticketID.ticketID || "bigh";
+  let ticketID = await chrome.storage.local.get("ticketID");
+  console.log("[popup] ticketID: ", ticketID);
+  jiraId.textContent = ticketID.ticketID || "bigh";
   // }, 2000);
 
 })();

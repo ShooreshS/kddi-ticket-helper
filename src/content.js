@@ -10,7 +10,7 @@ const IS_TOP = window === window.top;
 var tabUrl = window.location.href;
 var ticketID = null;
 let responseTemplate = {
-  "ticketSummary": "Datapacket Planned emergency maintenance in Los Angeles on Jun 30, 2025",
+  "ticketSummary": "Write the description here",
   "shortSummary": "[CD][KDDI][Country][Network][Service] Short Description of the Issue###Outage/NoOutage###",
   "changeDescription": [
     "Change reference:",
@@ -277,8 +277,8 @@ function setTopLevelElement(selector, value) {
     );
   });
 }
-// TODO
-function fillIncident(data, userInput) {
+
+async function fillIncident(data, userInput) {
 
   const country = userInput.country == "" ? data.ticketDetails.country : userInput.country;
   const ticketType = userInput.ticketType || "incident";
@@ -288,20 +288,31 @@ function fillIncident(data, userInput) {
 
 
   try {
-    // let caller =  await getTopLevelElement(`#sys_display\\.${ticketTypeTemp}\\.requested_by`, 'getAttribute', 'aria-label');
+    // document.querySelector("body > macroponent-f51912f4c700201072b211d4d8c26010").shadowRoot.querySelector("div > sn-canvas-appshell-root > sn-canvas-appshell-layout > sn-polaris-layout").shadowRoot.querySelector("div.sn-polaris-layout.polaris-enabled > div.layout-main > div.header-bar > sn-polaris-header").shadowRoot.querySelector("nav > div > div.ending-header-zone > div.polaris-header-controls > div.utility-menu-container > div > div")
+    // let profileEl = document.querySelector("body > macroponent-f51912f4c700201072b211d4d8c26010").shadowRoot.querySelector("div > sn-canvas-appshell-root > sn-canvas-appshell-layout > sn-polaris-layout").shadowRoot.querySelector("div.sn-polaris-layout.polaris-enabled > div.layout-main > div.header-bar > sn-polaris-header").shadowRoot.querySelector("nav > div > div.ending-header-zone > div.polaris-header-controls > div.utility-menu-container > div > div > now-avatar").shadowRoot.querySelector("span > span > span");
+
+    let caller; // = await getTopLevelElement(`#sys_display\\.${ticketType}\\.requested_by`, 'getAttribute', 'aria-label');
+    // console.log("[content] caller: ", caller);
+
+    // console.log("[content] caller: ", caller);
+    // if (!caller) {
+    //   user = document.querySelector("body > macroponent-f51912f4c700201072b211d4d8c26010").shadowRoot.querySelector("div > sn-canvas-appshell-root > sn-canvas-appshell-layout > sn-polaris-layout").shadowRoot.querySelector("div.sn-polaris-layout.polaris-enabled > div.layout-main > div.header-bar > sn-polaris-header").shadowRoot.querySelector("nav > div > div.ending-header-zone > div.polaris-header-controls > div.utility-menu-container > div > div")
+    //   caller = user.getAttribute("aria-label");
+    // }
+    // console.log("[content] caller: ", caller);
     //document.querySelector(`#sys_display\\.${ticketTypeTemp}\\.requested_by`); 
     // await getTopLevelElement('.header-avatar-button.contextual-zone-button.user-menu', 'getAttribute', 'aria-label');
 
     // FORM elements
     const els = {
-      shortDescriptionEl: document.querySelector(`#${ticketType}\\.short_description`),
-      descriptionEl: document.querySelector(`#${ticketType}\\.description`),
+      callerEl: document.querySelector("#sys_display\\.incident\\.caller_id"), // 
+      orginatorGroupEl: document.getElementById(`sys_display.${ticketType}.u_originator_group`), // document.querySelector("#sys_display\\.incident\\.u_originator_group")
       serviceEl: document.querySelector(`#sys_display\\.${ticketType}\\.business_service`),
       serviceOfferingEl: document.querySelector(`#sys_display\\.${ticketType}\\.service_offering`),
-      configItemEl: document.getElementById(`#sys_display\\.${ticketType}.cmdb_ci_label`),
-      callerEl: document.querySelector(`#sys_display\\${ticketType}.requested_by`),
+      configItemEl: document.querySelector("#sys_display\\.incident\\.cmdb_ci"), // 
+      shortDescriptionEl: document.querySelector(`#${ticketType}\\.short_description`), // document.querySelector("#incident\\.short_description")
+      descriptionEl: document.querySelector(`#${ticketType}\\.description`),
       assigneeGroupEl: document.querySelector(`#sys_display\\.${ticketType}\\.assignment_group`),
-      orginatorGroupEl: document.getElementById(`sys_display.${ticketType}.u_originator_group`),
       assigneeEl: document.querySelector(`#sys_display\\.${ticketType}\\.assigned_to`),
     };
     for (const [k, v] of Object.entries(els)) {
@@ -315,22 +326,23 @@ function fillIncident(data, userInput) {
     // FILL IN THE FORM
     // callerEl.value = caller;
 
+    els.orginatorGroupEl.value = 'FT_cdmno25kddi';
     els.serviceEl.value = 'Mobile Network, Connected Car';
-    els.serviceOfferingEl.value = country === "USA" ? "cdmno25kddi#us" : "cdmno25kddi#ca";
+    els.serviceOfferingEl.value = country.startsWith("US") ? "cdmno25kddi#us" : "cdmno25kddi#ca";
+    els.configItemEl.value = "";
     els.assigneeGroupEl.value = 'FT_cdmno25kddi';
 
-    if (ticketType === 'incident') {
-      assigneeEl.value = caller;
-      els.descriptionEl.value = data.ticketSummary || '';
-    } else {
-      els.orginatorGroupEl.value = 'FT_cdmno25kddi';
-      els.descriptionEl.value = responseTemplate.changeDescription.join("\n");
-      els.shortDescriptionEl.value = data.shortSummary
-        .replace('Country', country)
-        .replace('Network', mno)
-        .replace('Service', service)
-        .replace('SP:xx', jiraID) || '';
-    }
+
+    els.assigneeEl.value = caller != "" ? caller : els.callerEl.value;
+    els.descriptionEl.value = data.ticketSummary || '';
+
+    // NA for incident. els.descriptionEl.value = responseTemplate.changeDescription.join("\n");
+    els.shortDescriptionEl.value = data.shortSummary
+      .replace('Country', country)
+      .replace('Network', mno)
+      .replace('Service', service)
+      .replace('SP:xx', jiraID) || '';
+
 
   } catch (error) {
     console.error('Error filling in data:', error);
@@ -418,6 +430,37 @@ async function fillInData(data, userInput) {
   console.log(`[content] called fillIn${ticketTypeTemp}()`);
 }
 
+// TODO Child tickets
+function readParent() {
+  const els = {
+    callerEl: document.querySelector("#sys_display\\.change_request\\.requested_by"), // document.querySelector("#sys_display\\.change_request\\.requested_by")
+    serviceEl: document.querySelector(`#sys_display\\.change_request\\.business_service`), // document.querySelector("#sys_display\\.change_request\\.business_service")
+    serviceOfferingEl: document.querySelector(`#sys_display\\.change_request\\.service_offering`), // document.querySelector("#sys_display\\.change_request\\.service_offering")
+    configItemEl: document.querySelector("#sys_display\\.change_request\\.cmdb_ci"), // document.querySelector("#sys_display\\.change_request\\.cmdb_ci")
+    shortDescriptionEl: document.querySelector(`#change_request\\.short_description`), // document.querySelector("#change_request\\.short_description")
+    descriptionEl: document.querySelector(`#change_request\\.description`), // document.querySelector("#change_request\\.description")
+    assigneeGroupEl: document.querySelector(`#sys_display\\.change_request\\.assignment_group`), // document.querySelector("#sys_display\\.change_request\\.assignment_group")
+    assigneeEl: document.querySelector(`#sys_display\\.change_request\\.assigned_to`), // document.querySelector("#sys_display\\.change_request\\.assigned_to")
+    startDate: document.querySelector("#change_request\\.start_date"),
+    endDate: document.querySelector("#change_request\\.end_date"),
+  };
+
+  parentInfo = {
+    caller: els.callerEl.value,
+    service: els.serviceEl.value,
+    serviceOffering: els.serviceOfferingEl.value,
+    configItem: els.configItemEl.value,
+    shortDescription: els.shortDescriptionEl.value,
+    description: els.descriptionEl.value,
+    startDate: els.startDate,
+    endDate: els.endDate
+  };
+
+  chrome.runtime.sendMessage({ action: 'saveParentInfo', data: parentInfo });
+
+}
+
+
 // Top level
 if (IS_TOP) {
   chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
@@ -440,34 +483,48 @@ if (IS_TOP) {
 
     else if (request.action === 'getElement') {
       console.log('[content][TOP] Getting element:', request.selector);
-      (async () => {
-        let element = await queryDeep(request.selector);
+      let value;
+      try {
+        if (window.NOW && window.NOW.user_display_name) {
+          console.log("not null");
+          value = window.NOW.user_display_name
 
-        if (element) {
-          let response = null;
-          switch (request.func) {
-            case 'getProperty':
-              response = element[request.property];
-              break;
-            case 'getAttribute':
-              response = element.getAttribute(request.attribute).split(':')[0];
-              break;
-            case 'getValue':
-              response = element.value;
-              break;
-            default:
-              console.warn('Unknown function:', request.func);
-              response = "unknown function";
-          }
-
-          console.log('[content][TOP] value:', response);
-          sendResponse({ ok: true, selector: request.selector, value: response });
         } else {
-          sendResponse({ ok: false, selector: request.selector, value: "not found" });
+          console.log("was null");
+          value = document.querySelector("#sys_display\\.incident\\.caller_id").value;
         }
-      })();
+      } catch (e) {
+        console.log("[TOP] getElement Error:", e);
+        sendResponse({ ok: false, selector: request.selector, value: "not found" });
+      }
+      sendResponse({ ok: true, selector: request.selector, value: value });
     }
+    // (async () => {
+    //   let element = await queryDeep(request.selector);
 
+    //   if (element) {
+    //     let response = null;
+    //     switch (request.func) {
+    //       case 'getProperty':
+    //         response = element[request.property];
+    //         break;
+    //       case 'getAttribute':
+    //         response = element.getAttribute(request.attribute).split(':')[0];
+    //         break;
+    //       case 'getValue':
+    //         response = element.value;
+    //         break;
+    //       default:
+    //         console.warn('Unknown function:', request.func);
+    //         response = "unknown function";
+    //     }
+
+    //     console.log('[content][TOP] value:', response);
+    //     sendResponse({ ok: true, selector: request.selector, value: response });
+    //   } else {
+    //     sendResponse({ ok: false, selector: request.selector, value: "not found" });
+    //   }
+    // })();
     else if (request.action === 'setElement') {
       console.log('[content][TOP] Setting element:', request.selector, request.value);
       (async () => {
@@ -502,7 +559,7 @@ if (!IS_TOP) {
         console.log('[iframe] Retrieved ticket data from storage:', result);
         if (result.ticketData) {
           console.log('[iframe] Retrieved ticket data:', result.ticketData);
-          const formattedData = await formatData(result.ticketData);
+          const formattedData = await formatData(result);
           console.log('Formatted data:', formattedData);
           fillInData(result.ticketData, request.userInput);
           sendResponse({ status: 'success', message: 'Data pasted successfully' });

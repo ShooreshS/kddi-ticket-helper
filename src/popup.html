@@ -74,9 +74,36 @@
         <hr />
 
         <div id="buttons-container" class="button-row">
-            <button id="selector">Select</button>
-            <!-- <button id="read-data">Change Tasks</button> -->
-            <button id="paste-data">Fill-in</button>
+            <button id="selector" title="This extracts ticket information from the Jira ticket">Copy</button>
+            <button id="paste-data" title="This will paste the information into ITSM PARENT ticket">Fill-in
+                Parent</button>
+
+        </div>
+
+        <hr />
+        <div>
+            <!-- Radio button set that is populated programaticaly -->
+            <fieldset id="assignment-groups">
+                <legend>Select Assignment Group</legend>
+                <label>
+                    <input type="radio" name="childType" value="FT_vehicle-connectivity-vbc-devopsteam" checked>
+                    devopsteam
+                </label>
+                <label>
+                    <input type="radio" name="childType" value="FT_vehicle-connectivity-vmp-2nd">
+                    vmp-2nd
+                </label>
+                <label>
+                    <input type="radio" name="childType" value="FT_vehicle-connectivity-vdws-2nd">
+                    vdws-2nd
+                </label>
+                <label>
+                    <input type="radio" name="childType" value="FT_Remote Services-Offboard-EMEA">
+                    EMEA
+                </label>
+            </fieldset>
+            <button id="child-ticket" title="This will paste the information into ITSM CHILD ticket">Fill-in
+                Child</button>
         </div>
         <div id="status-message"></div>
     </div>
