@@ -251,6 +251,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 console.log('Listener for showWarningIcon added');
 
+
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('[popup] script loaded');
   const { orgUser } = await chrome.storage.local.get("orgUser");
@@ -260,6 +261,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log("USER IS NOOT ALLOWED");
     return;
   }
+  const formKey = "helperFormData"; // storage key
+  const elements = document.querySelectorAll(".persist");
 
   const fillChildBtn = document.querySelector("#child-ticket");
   const pasteButton = document.querySelector("#paste-data");
@@ -271,11 +274,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const serviceSelect = document.querySelector("#type_of_service");
   const assignmentGroups = document.querySelector("#assignment-groups");
 
-  serviceSelect.addEventListener("change", () => {
+  function updateGroups() {
     const selectedService = serviceSelect.value; // e.g. "DATA"
-    assignmentGroups.innerHTML = ""; // clear old radios
+    assignmentGroups.innerHTML = "<legend>Select Assignment Group</legend>"; // clear old radios
 
     const groups = groupsByService[selectedService] || [];
+    const savedGroup = localStorage.getItem("selectedGroup"); // read previous
+
 
     groups.forEach(group => {
       const label = document.createElement("label");
@@ -284,6 +289,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       input.type = "radio";
       input.name = "assignmentGroup"; // all radios share same name
       input.value = group;
+      if (savedGroup === group) {
+        input.checked = true;
+      }
+      input.addEventListener("click", () => {
+        localStorage.setItem('selectedGroup', group);
+      });
 
       label.appendChild(input);
       label.append(" " + group);
@@ -291,7 +302,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       assignmentGroups.appendChild(label);
       assignmentGroups.appendChild(document.createElement("br"));
     });
-  });
+  }
+
+  serviceSelect.addEventListener("change", updateGroups);
+
   selector.addEventListener('click', async () => {
     console.log('[popup] SELECTOR pressed', window.location.hostname);
 
@@ -313,34 +327,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.log("No content script in this tab:", e);
     }
   });
-
-  // readButton.addEventListener('click', async function () {
-  //   console.log('COPY pressed');
-
-  //   const valid = await isValidUrl();
-  //   console.log('is valid URL:', valid);
-  //   if (!valid) {
-  //     console.log('This feature is only available for Atlassian and ServiceNow domains.');
-  //     showWarningIcon();
-  //     return;
-  //   }
-
-  //   chrome.tabs.query({ active: true, currentWindow: true }, async function (tabs) {
-
-  //     const activeTab = tabs[0];
-  //     console.log('Active tab ID:', activeTab.id);
-  //     console.log('sending :', { action: 'extractTicketData' });
-  //     await chrome.tabs.sendMessage(activeTab.id, { action: 'extractTicketData' }, function (response) {
-  //       if (response) {
-  //         showSuccessIcon();
-  //         console.log('✅ Data received:', typeof response);
-  //         chrome.storage.local.set({ ticketData: response });
-  //       } else {
-  //         console.log('No corrcect data received: ', response);
-  //       }
-  //     });
-  //   });
-  // });
 
   pasteButton.addEventListener('click', async function () {
     console.log('[popup] Pasting data into destination tabs...');
@@ -379,6 +365,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   fillChildBtn.addEventListener('click', async function () {
     fillChild();
+  });
+
+  // Load saved data
+  const saved = JSON.parse(localStorage.getItem(formKey) || "{}");
+  elements.forEach(el => {
+    if (saved[el.id]) {
+      console.log("saved - id: ", el.id, " value: ", el.value);
+      el.value = saved[el.id];
+      if (el.id == 'type_of_service')
+        updateGroups();
+    }
+  });
+
+  // Save on change
+  elements.forEach(el => {
+    el.addEventListener("change", () => {
+      const data = JSON.parse(localStorage.getItem(formKey) || "{}");
+      data[el.id] = el.value;
+      localStorage.setItem(formKey, JSON.stringify(data));
+    });
   });
 
 });

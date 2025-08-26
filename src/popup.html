@@ -28,7 +28,7 @@
         <div class="item-list" id="helper-form">
             <div class="dropdown">
                 <label for="ticket-type">Ticket type</label>
-                <select id="ticket-type" name="ticket-type">
+                <select id="ticket-type" name="ticket-type" class="persist">
                     <option value=""></option>
                     <option value="change_request">Change request</option>
                     <option value="incident">Incident</option>
@@ -37,7 +37,7 @@
 
             <div class="dropdown">
                 <label for="country">Country</label>
-                <select id="country" name="country">
+                <select id="country" name="country" class="persist">
                     <option value=""></option>
                     <option value="US">USA</option>
                     <option value="CA">Canada</option>
@@ -46,7 +46,7 @@
 
             <div class="dropdown">
                 <label for="mno">Network</label>
-                <select id="mno" name="mno">
+                <select id="mno" name="mno" class="persist">
                     <option value=""></option>
                     <option value="VZW">VZW</option>
                     <option value="Telus">Telus</option>
@@ -57,7 +57,7 @@
 
             <div class="dropdown">
                 <label for="type_of_service">Service</label>
-                <select id="type_of_service" name="type_of_service">
+                <select id="type_of_service" name="type_of_service" class="persist">
                     <option value=""></option>
                     <option value="PROV">PROV/IT/SMDP+</option>
                     <option value="DATA">DATA</option>
@@ -85,22 +85,7 @@
             <!-- Radio button set that is populated programaticaly -->
             <fieldset id="assignment-groups">
                 <legend>Select Assignment Group</legend>
-                <label>
-                    <input type="radio" name="childType" value="FT_vehicle-connectivity-vbc-devopsteam" checked>
-                    devopsteam
-                </label>
-                <label>
-                    <input type="radio" name="childType" value="FT_vehicle-connectivity-vmp-2nd">
-                    vmp-2nd
-                </label>
-                <label>
-                    <input type="radio" name="childType" value="FT_vehicle-connectivity-vdws-2nd">
-                    vdws-2nd
-                </label>
-                <label>
-                    <input type="radio" name="childType" value="FT_Remote Services-Offboard-EMEA">
-                    EMEA
-                </label>
+                
             </fieldset>
             <button id="child-ticket" title="This will paste the information into ITSM CHILD ticket">Fill-in
                 Child</button>
