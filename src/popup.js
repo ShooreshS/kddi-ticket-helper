@@ -349,37 +349,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         showSuccessIcon();
       }
     });
-
-    // Load saved UI values
-    const saved = JSON.parse(localStorage.getItem(formKey) || "{}");
-    elements.forEach(el => {
-      if (saved[el.id]) {
-        console.log("saved - id: ", el.id, " value: ", el.value);
-        el.value = saved[el.id];
-        if (el.id == 'type_of_service')
-          updateGroups();
-      }
-    });
-
-    // Save on change in UI
-    elements.forEach(el => {
-      el.addEventListener("change", () => {
-        const data = JSON.parse(localStorage.getItem(formKey) || "{}");
-        data[el.id] = el.value;
-        localStorage.setItem(formKey, JSON.stringify(data));
-      });
-    });
-
   });
 
-  (async () => {
-    // setTimeout(async () => {
-    let ticketID = await chrome.storage.local.get("ticketID");
-    console.log("[popup] ticketID: ", ticketID);
-    jiraId.textContent = ticketID.ticketID || "bigh";
-    // }, 2000);
+  // Load saved UI values
+  const saved = JSON.parse(localStorage.getItem(formKey) || "{}");
+  elements.forEach(el => {
+    if (saved[el.id]) {
+      console.log("saved - id: ", el.id, " value: ", el.value);
+      el.value = saved[el.id];
+      if (el.id == 'type_of_service')
+        updateGroups();
+    }
+  });
 
-  })();
+  // Save on change in UI
+  elements.forEach(el => {
+    el.addEventListener("change", () => {
+      const data = JSON.parse(localStorage.getItem(formKey) || "{}");
+      data[el.id] = el.value;
+      localStorage.setItem(formKey, JSON.stringify(data));
+    });
+  });
+
+});
+
+(async () => {
+  // setTimeout(async () => {
+  let ticketID = await chrome.storage.local.get("ticketID");
+  console.log("[popup] ticketID: ", ticketID);
+  jiraId.textContent = ticketID.ticketID || "bigh";
+  // }, 2000);
+
+})();
 
 
-  console.log("[popup] loaded");
+console.log("[popup] loaded");
