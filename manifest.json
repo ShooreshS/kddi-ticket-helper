@@ -9,7 +9,8 @@
     "storage",
     "clipboardRead",
     "identity",
-    "identity.email"
+    "identity.email",
+    "scripting"
   ],
   "host_permissions": [
     "https://api.openai.com/*"

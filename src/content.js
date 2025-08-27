@@ -242,6 +242,9 @@ function queryDeep(selector, { root = document, timeout = 4000, every = 150 } = 
   });
 }
 
+
+
+
 function getTopLevelElement(selector, func = 'getAttribute', attribute = 'aria-label') {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
@@ -433,17 +436,24 @@ async function fillInData(data, userInput) {
 // TODO Child tickets
 function readParent() {
   const els = {
-    callerEl: document.querySelector("#sys_display\\.change_request\\.requested_by"), // document.querySelector("#sys_display\\.change_request\\.requested_by")
-    serviceEl: document.querySelector(`#sys_display\\.change_request\\.business_service`), // document.querySelector("#sys_display\\.change_request\\.business_service")
-    serviceOfferingEl: document.querySelector(`#sys_display\\.change_request\\.service_offering`), // document.querySelector("#sys_display\\.change_request\\.service_offering")
-    configItemEl: document.querySelector("#sys_display\\.change_request\\.cmdb_ci"), // document.querySelector("#sys_display\\.change_request\\.cmdb_ci")
-    shortDescriptionEl: document.querySelector(`#change_request\\.short_description`), // document.querySelector("#change_request\\.short_description")
-    descriptionEl: document.querySelector(`#change_request\\.description`), // document.querySelector("#change_request\\.description")
-    assigneeGroupEl: document.querySelector(`#sys_display\\.change_request\\.assignment_group`), // document.querySelector("#sys_display\\.change_request\\.assignment_group")
-    assigneeEl: document.querySelector(`#sys_display\\.change_request\\.assigned_to`), // document.querySelector("#sys_display\\.change_request\\.assigned_to")
+    callerEl: document.querySelector("#sys_display\\.change_request\\.requested_by"),
+    serviceEl: document.querySelector(`#sys_display\\.change_request\\.business_service`),
+    serviceOfferingEl: document.querySelector(`#sys_display\\.change_request\\.service_offering`),
+    configItemEl: document.querySelector("#sys_display\\.change_request\\.cmdb_ci"),
+    shortDescriptionEl: document.querySelector(`#change_request\\.short_description`),
+    descriptionEl: document.querySelector(`#change_request\\.description`),
+    assigneeGroupEl: document.querySelector(`#sys_display\\.change_request\\.assignment_group`),
+    assigneeEl: document.querySelector(`#sys_display\\.change_request\\.assigned_to`),
     startDate: document.querySelector("#change_request\\.start_date"),
     endDate: document.querySelector("#change_request\\.end_date"),
   };
+  for (const [k, v] of Object.entries(els)) {
+    if (v) {
+      console.log("✅ Found", k);
+    } else {
+      console.log("❌ Not found", k);
+    }
+  }
 
   parentInfo = {
     caller: els.callerEl.value,
@@ -456,10 +466,48 @@ function readParent() {
     endDate: els.endDate
   };
 
-  chrome.runtime.sendMessage({ action: 'saveParentInfo', data: parentInfo });
+  chrome.runtime.sendMessage({ action: 'saveParentInfo', data: parentInfo }).then(
+    () => {
+      console.log("[content] Parent info sent to background:", parentInfo);
+    }
+  );
 
 }
 
+function getParentInfo() {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ action: 'getParentInfo' }, (response) => {
+      if (response && response.status === 'success') {
+        resolve(response.data);
+      } else {
+        reject("Failed to get parent info");
+      }
+    });
+  });
+}
+
+async function fillChild() {
+  try {
+    const parentInfo = await getParentInfo();
+    console.log("Got parent info:", parentInfo);
+    if (!parentInfo || Object.keys(parentInfo).length === 0)
+      return false;
+    // TODO Find form elements
+    const els = {
+    };
+    // Fill in from parentInfo
+    els.callerEl.value = parentInfo.caller || '';
+    els.shortDescEl.value = parentInfo.shortDesc || '';
+    els.descEl.value = parentInfo.description || '';
+    els.startDate.value = parentInfo.startDate || '';
+    els.endDate.value = parentInfo.endDate || '';
+
+    return true;
+  } catch (err) {
+    console.error("Error getting parent info", err);
+    return false;
+  }
+}
 
 // Top level
 if (IS_TOP) {
@@ -492,6 +540,30 @@ if (IS_TOP) {
         } else {
           console.log("was null");
           value = document.querySelector("#sys_display\\.incident\\.caller_id").value;
+          // (async () => {
+          //   let element = await queryDeep(request.selector);
+          //   if (element) {
+          //     let response = null;
+          //     switch (request.func) {
+          //       case 'getProperty':
+          //         response = element[request.property];
+          //         break;
+          //       case 'getAttribute':
+          //         response = element.getAttribute(request.attribute).split(':')[0];
+          //         break;
+          //       case 'getValue':
+          //         response = element.value;
+          //         break;
+          //       default:
+          //         console.warn('Unknown function:', request.func);
+          //         response = "unknown function";
+          //     }
+          //     console.log('[content][TOP] value:', response);
+          //     sendResponse({ ok: true, selector: request.selector, value: response });
+          //   } else {
+          //     sendResponse({ ok: false, selector: request.selector, value: "not found" });
+          //   }
+          // })();
         }
       } catch (e) {
         console.log("[TOP] getElement Error:", e);
@@ -499,32 +571,7 @@ if (IS_TOP) {
       }
       sendResponse({ ok: true, selector: request.selector, value: value });
     }
-    // (async () => {
-    //   let element = await queryDeep(request.selector);
 
-    //   if (element) {
-    //     let response = null;
-    //     switch (request.func) {
-    //       case 'getProperty':
-    //         response = element[request.property];
-    //         break;
-    //       case 'getAttribute':
-    //         response = element.getAttribute(request.attribute).split(':')[0];
-    //         break;
-    //       case 'getValue':
-    //         response = element.value;
-    //         break;
-    //       default:
-    //         console.warn('Unknown function:', request.func);
-    //         response = "unknown function";
-    //     }
-
-    //     console.log('[content][TOP] value:', response);
-    //     sendResponse({ ok: true, selector: request.selector, value: response });
-    //   } else {
-    //     sendResponse({ ok: false, selector: request.selector, value: "not found" });
-    //   }
-    // })();
     else if (request.action === 'setElement') {
       console.log('[content][TOP] Setting element:', request.selector, request.value);
       (async () => {
@@ -551,7 +598,7 @@ if (IS_TOP) {
 // in iframes
 if (!IS_TOP) {
   console.log('[content][iframe] addListener(s)');
-  chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
+  chrome.runtime.onMessage.addListener(async function (request, sender, sendResponse) {
     console.log('[iframe] Received message:', request);
 
     if (request.action === 'pasteTicketData') {
@@ -570,9 +617,56 @@ if (!IS_TOP) {
       });
     }
 
+    else if (request.action === 'fillChildTicket') {
+      if (await fillChild())
+        sendResponse({ status: 'success', message: 'Child ticket filled' });
+      else
+        sendResponse({ status: 'error', message: 'Failed to fill child ticket' });
+    }
+
     return true; // keep channel open for async response
   });
 }
+
+// Inject subtask logic
+function findTabByCaption(captionStart) {
+  const captions = document.querySelectorAll("#tabs2_list .tab_caption_text");
+  return Array.from(captions).find(el =>
+    el.textContent.trim().startsWith(captionStart)
+  );
+}
+
+document.addEventListener('load', async () => {
+  const newChildTaskBtn = findTabByCaption("Change Tasks");
+  if (newChildTaskBtn) {
+    newChildTaskBtn.addEventListener('click', async () => {
+      console.log('Create Subtask button clicked');
+      readParent();
+    });
+  }
+});
+
+// Delegated Event Listener (if the button may be recreated/replaced often)
+// document.body.addEventListener("click", (e) => {
+//   if (e.target && e.target.id === "create_subtask_button") {
+//     console.log("Create Subtask button clicked");
+//     readParent();
+//   }
+// });
+
+// Use a MutationObserver (best if the element is injected later)
+// const observer = new MutationObserver(() => {
+//   const btn = document.querySelector("#create_subtask_button");
+//   if (btn) {
+//     btn.addEventListener("click", () => {
+//       console.log("Create Subtask button clicked");
+//       readParent();
+//     });
+//     observer.disconnect(); // stop watching once found
+//   }
+// });
+// observer.observe(document.body, { childList: true, subtree: true });
+
 
 function getSubtasks(ticketType) {
   // This function should retrieve subtasks based on the ticket type

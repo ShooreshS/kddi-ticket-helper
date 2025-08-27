@@ -186,31 +186,6 @@ function preparePopupForm(data) {
 
 }
 
-
-function getParentInfo() {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({ action: 'getInfo' }, (response) => {
-      if (response && response.status === 'success') {
-        resolve(response.data);
-      } else {
-        reject("Failed to get parent info");
-      }
-    });
-  });
-}
-
-
-async function fillChild() {
-  try {
-    const parentInfo = await getParentInfo();
-    console.log("Got parent info:", parentInfo);
-
-
-  } catch (err) {
-    console.error("Error getting parent info", err);
-  }
-}
-
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log("[popup] msg: ", request);
   if (request.action === "block") {
@@ -364,39 +339,47 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   fillChildBtn.addEventListener('click', async function () {
-    fillChild();
-  });
-
-  // Load saved data
-  const saved = JSON.parse(localStorage.getItem(formKey) || "{}");
-  elements.forEach(el => {
-    if (saved[el.id]) {
-      console.log("saved - id: ", el.id, " value: ", el.value);
-      el.value = saved[el.id];
-      if (el.id == 'type_of_service')
-        updateGroups();
-    }
-  });
-
-  // Save on change
-  elements.forEach(el => {
-    el.addEventListener("change", () => {
-      const data = JSON.parse(localStorage.getItem(formKey) || "{}");
-      data[el.id] = el.value;
-      localStorage.setItem(formKey, JSON.stringify(data));
+    showLoadingIcon();
+    chrome.runtime.sendMessage({ action: 'fillChildTicket' }, (response) => {
+      if (response.status && response.status !== 'success') {
+        console.warn('[popup] Error filling child ticket: something went wrong!');
+        showWarningIcon();
+      } else {
+        console.log('[popup] Child ticket filled successfully:', response);
+        showSuccessIcon();
+      }
     });
+
+    // Load saved UI values
+    const saved = JSON.parse(localStorage.getItem(formKey) || "{}");
+    elements.forEach(el => {
+      if (saved[el.id]) {
+        console.log("saved - id: ", el.id, " value: ", el.value);
+        el.value = saved[el.id];
+        if (el.id == 'type_of_service')
+          updateGroups();
+      }
+    });
+
+    // Save on change in UI
+    elements.forEach(el => {
+      el.addEventListener("change", () => {
+        const data = JSON.parse(localStorage.getItem(formKey) || "{}");
+        data[el.id] = el.value;
+        localStorage.setItem(formKey, JSON.stringify(data));
+      });
+    });
+
   });
 
-});
+  (async () => {
+    // setTimeout(async () => {
+    let ticketID = await chrome.storage.local.get("ticketID");
+    console.log("[popup] ticketID: ", ticketID);
+    jiraId.textContent = ticketID.ticketID || "bigh";
+    // }, 2000);
 
-(async () => {
-  // setTimeout(async () => {
-  let ticketID = await chrome.storage.local.get("ticketID");
-  console.log("[popup] ticketID: ", ticketID);
-  jiraId.textContent = ticketID.ticketID || "bigh";
-  // }, 2000);
-
-})();
+  })();
 
 
-console.log("[popup] loaded");
+  console.log("[popup] loaded");
