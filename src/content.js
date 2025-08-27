@@ -242,9 +242,6 @@ function queryDeep(selector, { root = document, timeout = 4000, every = 150 } = 
   });
 }
 
-
-
-
 function getTopLevelElement(selector, func = 'getAttribute', attribute = 'aria-label') {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
@@ -447,23 +444,16 @@ function readParent() {
     startDate: document.querySelector("#change_request\\.start_date"),
     endDate: document.querySelector("#change_request\\.end_date"),
   };
-  for (const [k, v] of Object.entries(els)) {
-    if (v) {
-      console.log("✅ Found", k);
-    } else {
-      console.log("❌ Not found", k);
-    }
-  }
 
-  parentInfo = {
+  let parentInfo = {
     caller: els.callerEl.value,
     service: els.serviceEl.value,
     serviceOffering: els.serviceOfferingEl.value,
     configItem: els.configItemEl.value,
     shortDescription: els.shortDescriptionEl.value,
     description: els.descriptionEl.value,
-    startDate: els.startDate,
-    endDate: els.endDate
+    startDate: els.startDate.value,
+    endDate: els.endDate.value,
   };
 
   chrome.runtime.sendMessage({ action: 'saveParentInfo', data: parentInfo }).then(
@@ -471,7 +461,6 @@ function readParent() {
       console.log("[content] Parent info sent to background:", parentInfo);
     }
   );
-
 }
 
 function getParentInfo() {
@@ -487,30 +476,52 @@ function getParentInfo() {
 }
 
 async function fillChild() {
+  console.log("[content] Filling child ticket from parent...");
   try {
-    const parentInfo = await getParentInfo();
-    console.log("Got parent info:", parentInfo);
-    if (!parentInfo || Object.keys(parentInfo).length === 0)
+    let group;
+    chrome.storage.local.get("selectedGroup", (result) => {
+      console.log("Selected group from storage:", result.selectedGroup);
+      group = result.selectedGroup || '';
+    });
+    //  localStorage.getItem("selectedGroup") || '';
+    console.log("Selected group from storage:", group);
+    getParentInfo().then(
+      (parentInfo) => {
+        console.log("[cont] Got parent info:", parentInfo);
+        if (!parentInfo || Object.keys(parentInfo).length === 0)
+          return false;
+        console.log("parentInfo is valid");
+        const els = {
+          configTtemEl: document.querySelector("#sys_display\\.change_task\\.cmdb_ci"),
+          startDate: document.querySelector("#change_task\\.planned_start_date"),
+          endDate: document.querySelector("#change_task\\.planned_end_date"),
+          shortDescEl: document.querySelector("#change_task\\.short_description"),
+          descEl: document.querySelector("#change_task\\.description"),
+          assigneeGroupEl: document.querySelector("#sys_display\\.change_task\\.assignment_group"),
+        };
+
+        els.configTtemEl.value = parentInfo.configItem || '';
+        els.shortDescEl.value = parentInfo.shortDescription || '';
+        els.descEl.value = parentInfo.description || '';
+        els.assigneeGroupEl.value = group;
+        els.startDate.value = parentInfo.startDate;
+        els.endDate.value = parentInfo.endDate;
+      }
+    ).catch((err) => {
+      console.log("Error retrieving parent info:", err);
       return false;
-    // TODO Find form elements
-    const els = {
-    };
-    // Fill in from parentInfo
-    els.callerEl.value = parentInfo.caller || '';
-    els.shortDescEl.value = parentInfo.shortDesc || '';
-    els.descEl.value = parentInfo.description || '';
-    els.startDate.value = parentInfo.startDate || '';
-    els.endDate.value = parentInfo.endDate || '';
+    });
 
     return true;
   } catch (err) {
-    console.error("Error getting parent info", err);
+    console.log("Error getting parent info", err);
     return false;
   }
 }
 
 // Top level
 if (IS_TOP) {
+  console.log('[content] TOP addListeners');
   chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     console.log('[content] TOP Received message:', request);
 
@@ -586,9 +597,7 @@ if (IS_TOP) {
     }
 
     else {
-      console.warn('[content] TOP Unknown action:', request.action);
-      // TODO: Not necessary
-      sendResponse({ status: 'error', message: '[TOP] Unknown action' });
+      console.log('[content] TOP Unknown action:', request.action);
     }
 
     return true; // keep channel open (good habit for async)
@@ -597,7 +606,7 @@ if (IS_TOP) {
 
 // in iframes
 if (!IS_TOP) {
-  console.log('[content][iframe] addListener(s)');
+  console.log('[content][iframe] addListeners');
   chrome.runtime.onMessage.addListener(async function (request, sender, sendResponse) {
     console.log('[iframe] Received message:', request);
 
@@ -618,10 +627,17 @@ if (!IS_TOP) {
     }
 
     else if (request.action === 'fillChildTicket') {
-      if (await fillChild())
+      console.log('[iframe] Filling child ticket from parent...');
+
+      let succ = await fillChild();
+      if (succ)
         sendResponse({ status: 'success', message: 'Child ticket filled' });
       else
         sendResponse({ status: 'error', message: 'Failed to fill child ticket' });
+    }
+
+    else {
+      console.log('[iframe] Unknown action:', request.action);
     }
 
     return true; // keep channel open for async response
@@ -636,36 +652,18 @@ function findTabByCaption(captionStart) {
   );
 }
 
-document.addEventListener('load', async () => {
-  const newChildTaskBtn = findTabByCaption("Change Tasks");
-  if (newChildTaskBtn) {
-    newChildTaskBtn.addEventListener('click', async () => {
-      console.log('Create Subtask button clicked');
+const observer = new MutationObserver(() => {
+  console.log("[content] MutationObserver checking for Create Subtask button...");
+  const btn = findTabByCaption("Change Tasks");
+  if (btn) {
+    btn.addEventListener("click", () => {
+      console.log("Create Subtask button clicked");
       readParent();
     });
+    observer.disconnect(); // stop watching once found
   }
 });
-
-// Delegated Event Listener (if the button may be recreated/replaced often)
-// document.body.addEventListener("click", (e) => {
-//   if (e.target && e.target.id === "create_subtask_button") {
-//     console.log("Create Subtask button clicked");
-//     readParent();
-//   }
-// });
-
-// Use a MutationObserver (best if the element is injected later)
-// const observer = new MutationObserver(() => {
-//   const btn = document.querySelector("#create_subtask_button");
-//   if (btn) {
-//     btn.addEventListener("click", () => {
-//       console.log("Create Subtask button clicked");
-//       readParent();
-//     });
-//     observer.disconnect(); // stop watching once found
-//   }
-// });
-// observer.observe(document.body, { childList: true, subtree: true });
+observer.observe(document.body, { childList: true, subtree: true });
 
 
 function getSubtasks(ticketType) {

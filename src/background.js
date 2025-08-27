@@ -396,7 +396,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         chrome.storage.local.get('parentInfo', function (result) {
             console.log('[BG] Data saved to storage:', result);
             if (result)
-                sendResponse({ status: 'success', data: result });
+                sendResponse({ status: 'success', data: result.parentInfo });
             else
                 sendResponse({ status: 'fail', data: "" });
         });
@@ -405,6 +405,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     else if (request.action === 'getTicketData') {
         chrome.storage.local.get('ticketData', (data) => {
             sendResponse({ status: 'success', data: data.ticketData });
+        });
+    }
+
+    else if (request.action === 'groupSelected') {
+        chrome.storage.local.set({ selectedGroup: request.group }, () => {
+            console.log('[BG] Selected group saved to storage:', request.group);
+            sendResponse({ status: 'success' });
         });
     }
 
@@ -445,10 +452,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     else {
-        console.warn('[BG] Unknown action:', request.action);
-        sendResponse({ status: 'error', message: 'Unknown action' });
+        console.log('[BG] Unknown action:', request.action);
     }
 
     return true; // Indicates that the response will be sent asynchronously
 });
+
 console.log("[BG] Listeners added");

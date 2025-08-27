@@ -319,6 +319,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       input.addEventListener("click", () => {
         localStorage.setItem('selectedGroup', group);
+        chrome.runtime.sendMessage({ action: 'groupSelected', group: group }, (response) => {
+          if (response.status && response.status !== 'success') {
+            console.warn('[popup] Error saving group selection');
+            showWarningIcon();
+          } else {
+            console.log('[popup] Group selection saved:', group);
+            showSuccessIcon();
+          }
+        });
       });
 
       label.appendChild(input);
@@ -390,15 +399,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   fillChildBtn.addEventListener('click', async function () {
     showLoadingIcon();
-    chrome.runtime.sendMessage({ action: 'fillChildTicket' }, (response) => {
-      if (response.status && response.status !== 'success') {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      console.log("[popup] tab ", tab);
+      const resp = await chrome.tabs.sendMessage(tab.id, { action: 'fillChildTicket' });
+      console.log("[popup] Response:", resp);
+      if (resp && resp.status && resp.status !== 'success') {
         console.warn('[popup] Error filling child ticket: something went wrong!');
         showWarningIcon();
+        return;
       } else {
-        console.log('[popup] Child ticket filled successfully:', response);
+        console.log('[popup] Child ticket filled successfully:', resp);
         showSuccessIcon();
+        return;
       }
-    });
+    } catch (e) {
+      console.log("No content script in this tab:", e);
+    }
   });
 
   // Load saved UI values
