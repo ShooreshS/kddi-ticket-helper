@@ -54,18 +54,30 @@
                     <option value="SEGRA">SEGRA</option>
                 </select>
             </div>
-
             <div class="dropdown">
                 <label for="type_of_service">Service</label>
                 <select id="type_of_service" name="type_of_service" class="persist">
                     <option value=""></option>
-                    <option value="PROV">PROV/IT/SMDP+</option>
+                    <option value="PROV">PROV</option>
+                    <option value="IT">IT</option>
+                    <option value="SMDP">SMDP+</option>
                     <option value="DATA">DATA</option>
                     <option value="SMS">SMS</option>
+                    <option value="EMAG">EMAG</option>
                     <option value="VOICE">VOICE / VOLTE</option>
-                    <option value="IP">IP/APN/DNS/LEASEDLINE/Routing/PGW</option>
+                    <option value="IP">IP</option>
+                    <option value="APN">APN</option>
+                    <option value="DNS">DNS</option>
+                    <option value="LEASEDLINE">LEASEDLINE</option>
+                    <option value="ROUTING">ROUTING</option>
+                    <option value="PGW">PGW</option>
                     <option value="SIM">SIM ORDER</option>
                     <option value="FRAUD">FRAUD</option>
+                    <option value="BACKBONE">BACKBONE</option>
+                    <option value="API">API</option>
+                    <option value="NET">NET</option>
+                    <option value="B2V">B2V</option>
+                    <option value="SEC">SEC</option>
                     <option value="OTHER">OTHER</option>
                 </select>
             </div>
@@ -85,7 +97,7 @@
             <!-- Radio button set that is populated programaticaly -->
             <fieldset id="assignment-groups">
                 <legend>Select Assignment Group</legend>
-                
+
             </fieldset>
             <button id="child-ticket" title="This will paste the information into ITSM CHILD ticket">Fill-in
                 Child</button>

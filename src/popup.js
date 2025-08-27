@@ -28,6 +28,12 @@ const groupsByService = {
   PROV: [
     "FT_BMWSTM-Offboard-US-PROD"
   ],
+  IT: [
+    "FT_BMWSTM-Offboard-US-PROD"
+  ],
+  SMDP: [
+    "FT_BMWSTM-Offboard-US-PROD"
+  ],
   DATA: [
     "FT_vehicle-connectivity-vbc-devopsteam",
     "FT_vehicle-connectivity-vmp-2nd",
@@ -35,6 +41,12 @@ const groupsByService = {
     "FT_Remote Services-Offboard-EMEA"
   ],
   SMS: [
+    "FT_vehicle-connectivity-vdws-2nd",
+    "FT_Remote Services-Offboard-EMEA",
+    "FT_Connected Call Services-2nd",
+    "FT_sms-gateway-ops-cd-us"
+  ],
+  EMAG: [
     "FT_vehicle-connectivity-vdws-2nd",
     "FT_Remote Services-Offboard-EMEA",
     "FT_Connected Call Services-2nd",
@@ -48,14 +60,52 @@ const groupsByService = {
     "FT_vehicle-connectivity-vmp-2nd",
     "FT_cd-mno-support-us"
   ],
+  APN: [
+    "FT_vehicle-connectivity-vbc-devopsteam",
+    "FT_vehicle-connectivity-vmp-2nd",
+    "FT_cd-mno-support-us"
+  ],
+  DNS: [
+    "FT_vehicle-connectivity-vbc-devopsteam",
+    "FT_vehicle-connectivity-vmp-2nd",
+    "FT_cd-mno-support-us"
+  ],
+  LEASEDLINE: [
+    "FT_vehicle-connectivity-vbc-devopsteam",
+    "FT_vehicle-connectivity-vmp-2nd",
+    "FT_cd-mno-support-us"
+  ],
+  ROUTING: [
+    "FT_vehicle-connectivity-vbc-devopsteam",
+    "FT_vehicle-connectivity-vmp-2nd",
+    "FT_cd-mno-support-us"
+  ],
+  PGW: [
+    "FT_vehicle-connectivity-vbc-devopsteam",
+    "FT_vehicle-connectivity-vmp-2nd",
+    "FT_cd-mno-support-us"
+  ],
   SIM: [
     "FT_cdsubmanager-emea"
   ],
   FRAUD: [
     "FT_cdbmw-fraud-us"
   ],
+  BACKBONE: [
+    "FT_vehicle-connectivity-vbc-devopsteam",
+    "FT_vehicle-connectivity-vmp-2nd",
+    "FT_cd-mno-support-us"
+  ],
+  API: [
+  ],
+  NET: [
+  ],
+  B2V: [
+  ],
+  SEC: [
+    "FT_cdbmw-fraud-us"
+  ],
   OTHER: [
-
   ]
 };
 
