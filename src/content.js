@@ -144,6 +144,7 @@ let example_gpt_incident_response = {
   }
 }
 
+// MARK: Picker Mode
 function startPickerMode() {
   // Create a highlight box overlay
   document.body.style.cursor = 'crosshair';
@@ -278,6 +279,7 @@ function setTopLevelElement(selector, value) {
   });
 }
 
+// MARK: Fill-in
 async function fillIncident(data, userInput) {
 
   const country = userInput.country == "" ? data.ticketDetails.country : userInput.country;

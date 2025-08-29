@@ -7,14 +7,16 @@
     "tabs",
     "activeTab",
     "storage",
-    "clipboardRead",
-    "identity",
-    "identity.email",
-    "scripting"
+    "identity"
   ],
-  "host_permissions": [
-    "https://api.openai.com/*"
-  ],
+  "host_permissions": [],
+  "oauth2": {
+    "client_id": "313396546139-grtaapbcbvtjkm1vdj5o4p7lrcrq0avs.apps.googleusercontent.com",
+    "scopes": [
+      "email",
+      "profile"
+    ]
+  },
   "background": {
     "service_worker": "src/background.js",
     "type": "module"

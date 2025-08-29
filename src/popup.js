@@ -241,7 +241,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "block") {
     console.warn("[popup] Block message received", request.reason);
     chrome.storage.local.set({ orgUser: false });
-    document.body.innerHTML = "<p>🚫 Access blocked. You are not allowed to use this extension.</p>";
+    document.body.innerHTML = "<p>🚫 Access blocked. You are not allowed to use this extension.<br>[!] Login with your organization email.</p>";
   }
 
   else if (request.action === "ticketID") {
@@ -282,7 +282,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const { orgUser } = await chrome.storage.local.get("orgUser");
 
   if (!orgUser) {
-    document.body.innerHTML = "<p>🚫 Access blocked. You are not allowed to use this extension.</p>";
+    document.body.innerHTML = "<p>🚫 Access blocked. You are not allowed to use this extension.<br>Login with your organization email!</p>";
     console.log("USER IS NOOT ALLOWED");
     return;
   }
